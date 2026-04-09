@@ -149,7 +149,7 @@ def get_disk_io() -> dict:
         now = time.time()
         if _last_disk_io is not None:
             dt = now - _last_io_time
-            if dt > 0.1:
+            if dt >= 0.05:  # 降低阈值到 50ms
                 read_mb = (io.read_bytes - _last_disk_io.read_bytes) / dt / (1024**2)
                 write_mb = (io.write_bytes - _last_disk_io.write_bytes) / dt / (1024**2)
                 _last_disk_io = io
@@ -171,12 +171,15 @@ def get_network_io() -> dict:
         now = time.time()
         if _last_net_io is not None:
             dt = now - _last_io_time
-            if dt > 0.1:
+            if dt >= 0.05:  # 降低阈值到 50ms
                 recv_mb = (n.bytes_recv - _last_net_io.bytes_recv) / dt / (1024**2)
                 sent_mb = (n.bytes_sent - _last_net_io.bytes_sent) / dt / (1024**2)
                 _last_net_io = n
                 _last_io_time = now
                 return {"recv_mb_s": max(0, round(recv_mb, 2)), "sent_mb_s": max(0, round(sent_mb, 2))}
+            # dt太小，只更新时间戳，下次再计算
+            _last_io_time = now
+            return {"recv_mb_s": 0, "sent_mb_s": 0}
         _last_net_io = n
         _last_io_time = now
         return {"recv_mb_s": 0, "sent_mb_s": 0}
@@ -216,19 +219,33 @@ def _macmon_start() -> bool:
     if _macmon_proc is not None:
         return True
     try:
+        import subprocess
+        import os
+        import fcntl
+
         _macmon_proc = subprocess.Popen(
             ["macmon", "pipe", "--interval", "200"],
-            stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
-            text=True, bufsize=4096
+            stdout=subprocess.PIPE, stderr=subprocess.DEVNULL
         )
+        # 使用 fcntl 设置 O_NONBLOCK，绕过 Python buffered I/O
+        fd = _macmon_proc.stdout.fileno()
+        flags = fcntl.fcntl(fd, fcntl.F_GETFL)
+        fcntl.fcntl(fd, fcntl.F_SETFL, flags | os.O_NONBLOCK)
+
         # 预热：等待第一行数据（macmon 启动约 1-2s）
         import select
+        buf = b""
         for _ in range(20):  # 最多等 2 秒
             r, _, _ = select.select([_macmon_proc.stdout], [], [], 0.1)
             if r:
-                line = _macmon_proc.stdout.readline()
-                if line:
-                    return True
+                try:
+                    chunk = os.read(fd, 4096)
+                    if chunk:
+                        buf += chunk
+                        if b"\n" in buf:
+                            return True
+                except (IOError, OSError):
+                    pass
         # 启动超时，仍认为进程活着
         return True
     except Exception:
@@ -239,21 +256,41 @@ def _macmon_start() -> bool:
 _macmon_lock = threading.Lock()
 
 def _macmon_read() -> Optional[dict]:
-    """从 macmon 常驻进程读一行，解析功率数据（线程安全）"""
-    global _macmon_proc, _macmon_buf
+    """从 macmon 常驻进程读取一行，解析功率数据（线程安全）"""
+    global _macmon_proc
     if _macmon_proc is None:
         return None
+
     with _macmon_lock:
         try:
+            import os
             import select
-            r, _, _ = select.select([_macmon_proc.stdout], [], [], 0.3)
+
+            fd = _macmon_proc.stdout.fileno()
+
+            # 先检查是否有数据可读
+            r, _, _ = select.select([_macmon_proc.stdout], [], [], 0.1)
             if not r:
+                return None  # 超时，无数据
+
+            # 读取数据（绕过 Python buffered I/O）
+            buf = b""
+            try:
+                chunk = os.read(fd, 4096)
+                if not chunk:
+                    _macmon_proc = None
+                    return None
+                buf = chunk
+            except (IOError, OSError):
                 return None
-            line = _macmon_proc.stdout.readline()
-            if not line:
-                # macmon 退出，重置
-                _macmon_proc = None
+
+            # 找到完整行
+            if b"\n" in buf:
+                line = buf.split(b"\n")[0].decode("utf-8")
+            else:
+                # 不完整，等待下次调用
                 return None
+
             data = json.loads(line)
             return {
                 "all_power_w": round(data.get("all_power", 0), 2),

@@ -159,8 +159,8 @@ HTML = """<!DOCTYPE html>
     <div class="timestamp" id="ts">--</div>
     <div class="interval-ctrl">
       <label>Interval</label>
-      <input type="range" id="int-slider" min="2" max="10" value="8" step="1">
-      <span class="val" id="int-val">8s</span>
+      <input type="range" id="int-slider" min="1" max="10" value="2" step="1">
+      <span class="val" id="int-val">2s</span>
     </div>
   </div>
 </header>
@@ -180,14 +180,13 @@ HTML = """<!DOCTYPE html>
       <div class="card-title">CPU</div>
       <div class="big-val" id="cpu-pct">--<span class="big-unit">%</span></div>
       <div class="bar-bg"><div class="bar-fill cpu" id="cpu-bar" style="width:0%"></div></div>
-      <div style="margin-top:10px;">
-        <div style="display:flex;align-items:baseline;gap:6px;">
-          <span id="gpu-pct" style="font-size:28px;font-weight:800;font-variant-numeric:tabular-nums;color:var(--power)">--</span>
-          <span style="font-size:13px;color:var(--power);font-weight:700;">%</span>
-          <span style="font-size:11px;color:var(--power);font-weight:600;opacity:0.8;">GPU</span>
-        </div>
-        <div class="bar-bg" style="margin-top:4px;"><div class="bar-fill" id="gpu-bar" style="width:0%;background:var(--power)"></div></div>
-      </div>
+    </div>
+
+    <!-- GPU (独立卡片) -->
+    <div class="card" style="border-left:3px solid var(--power);">
+      <div class="card-title" style="color:var(--power);">GPU</div>
+      <div class="big-val" id="gpu-pct" style="color:var(--power);">--<span class="big-unit">%</span></div>
+      <div class="bar-bg"><div class="bar-fill" id="gpu-bar" style="width:0%;background:var(--power)"></div></div>
     </div>
 
     <!-- Memory -->
@@ -328,7 +327,7 @@ HTML = """<!DOCTYPE html>
 <script>
 const API = '/json';
 const MAX_HIST = 60;
-let UPDATE_INTERVAL = 8;
+let UPDATE_INTERVAL = 2;
 
 let history = { mem: [], cpu: [], gpuUsage: [], power: [], cpuTemp: [], gpuTemp: [], netDown: [], netUp: [] };
 
@@ -531,7 +530,7 @@ function updateUI(data) {
   const gpuPct = (pw && pw.gpu_usage_pct != null) ? pw.gpu_usage_pct : 0;
   el('cpu-pct').innerHTML = round(cpu.percent, 0) + '<span class="big-unit">%</span>';
   el('cpu-bar').style.width = Math.min(100, cpu.percent) + '%';
-  el('gpu-pct').textContent = gpuPct > 0 ? round(gpuPct, 0) : '--';
+  el('gpu-pct').innerHTML = gpuPct > 0 ? round(gpuPct, 0) + '<span class="big-unit">%</span>' : '--<span class="big-unit">%</span>';
   el('gpu-bar').style.width = Math.min(100, gpuPct) + '%';
 
   // Power
@@ -558,7 +557,7 @@ function updateUI(data) {
   el('temp-gpu-bar').style.width = Math.min(100, gpuT) + '%';
 
   // Disk
-  const diskPct = disk.total_gb > 0 ? (disk.used_gb / disk.total_gb * 100) : (disk.percent || 0);
+  const diskPct = disk.percent || 0;
   el('disk-pct').innerHTML = round(diskPct, 0) + '<span class="big-unit">%</span>';
   el('disk-detail').textContent = round(disk.used_gb, 0) + ' / ' + round(disk.total_gb, 0) + ' GB';
   el('disk-bar').style.width = Math.min(100, diskPct) + '%';
@@ -633,6 +632,37 @@ latest_data = None
 latest_lock = threading.Lock()
 collector_interval = [8.0]
 
+# HTTP handler 专用的网络 IO 跟踪器（与 collector 分离）
+_http_last_net_io = None
+_http_last_io_time = 0
+_http_net_lock = threading.Lock()
+
+
+def get_http_network_io() -> dict:
+    """HTTP handler 专用的网络 IO 计算（线程安全）"""
+    global _http_last_net_io, _http_last_io_time
+    import psutil
+    import time
+
+    n = psutil.net_io_counters()
+    now = time.time()
+
+    with _http_net_lock:
+        if _http_last_net_io is not None:
+            dt = now - _http_last_io_time
+            if dt >= 0.1:
+                recv_mb = (n.bytes_recv - _http_last_net_io.bytes_recv) / dt / (1024**2)
+                sent_mb = (n.bytes_sent - _http_last_net_io.bytes_sent) / dt / (1024**2)
+                _http_last_net_io = n
+                _http_last_io_time = now
+                return {"recv_mb_s": max(0, round(recv_mb, 2)), "sent_mb_s": max(0, round(sent_mb, 2))}
+            # dt 太小，不计算但更新时间戳
+            _http_last_io_time = now
+            return {"recv_mb_s": 0, "sent_mb_s": 0}
+        _http_last_net_io = n
+        _http_last_io_time = now
+        return {"recv_mb_s": 0, "sent_mb_s": 0}
+
 
 # Global snapshot function set by run()
 take_snapshot = None
@@ -693,23 +723,20 @@ class Handler(http.server.BaseHTTPRequestHandler):
                         "source": pi.get("source", "") if pi else "",
                     },
                     "disk": {
-                        "percent": round(snap.disk_used_gb / snap.disk_total_gb * 100, 1) if snap.disk_total_gb > 0 else 0,
+                        "percent": snap.disk_percent,
                         "used_gb": snap.disk_used_gb,
                         "total_gb": snap.disk_total_gb,
                         "read_mb_s": snap.disk_read_mb_s,
                         "write_mb_s": snap.disk_write_mb_s,
                     },
-                    "network": {
-                        "recv_mb_s": snap.net_recv_mb_s,
-                        "sent_mb_s": snap.net_sent_mb_s,
-                    },
+                    "network": get_http_network_io(),
                 }
             except Exception as e:
                 self.send_error(500, str(e))
                 return
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
-            self.send_header("Access-Control-Allow-Origin", "http://localhost")
+            self.send_header("Access-Control-Allow-Origin", "*")
             self.end_headers()
             self.wfile.write(json.dumps(data).encode())
 
@@ -762,7 +789,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
     def do_OPTIONS(self):
         self.send_response(200)
-        self.send_header("Access-Control-Allow-Origin", "http://localhost")
+        self.send_header("Access-Control-Allow-Origin", "*")
         self.send_header("Access-Control-Allow-Methods", "GET, OPTIONS")
         self.send_header("Access-Control-Allow-Headers", "Content-Type")
         self.end_headers()
@@ -773,7 +800,7 @@ class QuietTCPServer(socketserver.TCPServer):
     daemon_threads = True
 
 
-def run(port=8001, interval=8.0):
+def run(host="127.0.0.1", port=8001, interval=8.0):
     global take_snapshot, _macmon_start, _macmon_stop
     script_dir = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, script_dir)
@@ -835,10 +862,10 @@ def run(port=8001, interval=8.0):
     t = threading.Thread(target=collector, daemon=True)
     t.start()
 
-    with QuietTCPServer(("127.0.0.1", port), Handler) as httpd:
+    with QuietTCPServer((host, port), Handler) as httpd:
         print(f"")
         print(f"  Dashboard : http://localhost:{port}/")
-        print(f"  LAN access: http://localhost:{port}/")
+        print(f"  LAN access: http://{host}:{port}/")
         print(f"  JSON API  : http://localhost:{port}/json")
         print(f"  Prometheus: http://localhost:{port}/metrics")
         print(f"  Health    : http://localhost:{port}/health")
@@ -859,7 +886,8 @@ def run(port=8001, interval=8.0):
 if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser()
+    parser.add_argument("--host", type=str, default="127.0.0.1", help="绑定地址 (默认: 127.0.0.1)")
     parser.add_argument("--port", type=int, default=8001)
     parser.add_argument("--interval", type=float, default=8.0)
     args = parser.parse_args()
-    run(port=args.port, interval=args.interval)
+    run(host=args.host, port=args.port, interval=args.interval)
