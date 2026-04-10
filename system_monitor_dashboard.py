@@ -1235,7 +1235,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
         elif self.path.startswith("/openclaw/status"):
             # Proxy: openclaw gateway call status --json
             try:
-                import subprocess, json
+                import subprocess
                 r = subprocess.run(['openclaw', 'gateway', 'call', 'status', '--json'],
                                    capture_output=True, timeout=10)
                 out = r.stdout.decode().strip()
@@ -1257,7 +1257,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
         elif self.path.startswith("/openclaw/health"):
             # Proxy: openclaw gateway call health --json
             try:
-                import subprocess, json
+                import subprocess
                 r = subprocess.run(['openclaw', 'gateway', 'call', 'health', '--json'],
                                    capture_output=True, timeout=10)
                 out = r.stdout.decode().strip()
@@ -1278,7 +1278,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
         elif self.path.startswith("/openclaw/agents"):
             # Proxy: openclaw agents list --json
             try:
-                import subprocess, json
+                import subprocess
                 r = subprocess.run(['openclaw', 'agents', 'list', '--json'],
                                    capture_output=True, timeout=10)
                 out = r.stdout.decode().strip()
@@ -1299,7 +1299,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
         elif self.path.startswith("/openclaw/sessions"):
             # Proxy: openclaw sessions --all-agents --json
             try:
-                import subprocess, json
+                import subprocess
                 r = subprocess.run(['openclaw', 'sessions', '--all-agents', '--json'],
                                    capture_output=True, timeout=10)
                 out = r.stdout.decode().strip()
