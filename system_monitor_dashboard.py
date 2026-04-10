@@ -1027,15 +1027,15 @@ class Handler(http.server.BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(json.dumps(data).encode())
 
-        elif self.path.startswith("/oml"):
-            # Proxy to oMLX API (avoids CORS)
+        elif self.path.startswith("/oml/models"):
+            # Proxy to oMLX /v1/models/status (check BEFORE /oml)
             try:
                 import urllib.request
                 req = urllib.request.Request(
-                    "http://localhost:8000/api/status",
+                    "http://localhost:8000/v1/models/status",
                     headers={"Authorization": "Bearer oMLX"}
                 )
-                with urllib.request.urlopen(req, timeout=3) as resp:
+                with urllib.request.urlopen(req, timeout=5) as resp:
                     self.send_response(resp.status)
                     self.send_header("Content-Type", "application/json")
                     self.send_header("Access-Control-Allow-Origin", "*")
@@ -1045,15 +1045,15 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 self.send_error(502, str(e))
             return
 
-        elif self.path.startswith("/oml/models"):
-            # Proxy to oMLX /v1/models/status
+        elif self.path.startswith("/oml"):
+            # Proxy to oMLX API (avoids CORS)
             try:
                 import urllib.request
                 req = urllib.request.Request(
-                    "http://localhost:8000/v1/models/status",
+                    "http://localhost:8000/api/status",
                     headers={"Authorization": "Bearer oMLX"}
                 )
-                with urllib.request.urlopen(req, timeout=5) as resp:
+                with urllib.request.urlopen(req, timeout=3) as resp:
                     self.send_response(resp.status)
                     self.send_header("Content-Type", "application/json")
                     self.send_header("Access-Control-Allow-Origin", "*")
