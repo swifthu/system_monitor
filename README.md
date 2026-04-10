@@ -118,7 +118,7 @@ python -m pytest tests/ -v
 system_monitor/
 ├── system_monitor.py          # 数据采集核心模块
 ├── system_monitor_dashboard.py  # Web Dashboard（包含 HTML/JS/CSS）
-├── CLAUDE.md                   # Claude Code Agent 协作规范
+├── CLAUDE.md                   # 项目入口（已移至 /Users/jimmyhu/Documents/CC/Agents/CLAUDE.md）
 ├── README.md                   # 本文档
 └── tests/
     ├── test_system_monitor.py  # 系统监控单元测试
