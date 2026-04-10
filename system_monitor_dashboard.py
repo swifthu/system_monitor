@@ -853,17 +853,13 @@ async function fetchData() {
   } catch(e) { console.warn('fetch error', e); }
 }
 
-// Always poll all data globally (system + omlx + openclaw), sequential to avoid connection pool saturation
+// Always poll all data globally (system + omlx + openclaw), concurrent
 let pollInProgress = false;
 async function pollAll() {
   if (paused || pollInProgress) return;
   pollInProgress = true;
   try {
-    await fetchData();
-    await fetchOmlx();
-    await fetchOpenClaw();
-  } catch(e) {
-    // ignore - individual fetch functions handle their own errors
+    await Promise.allSettled([fetchData(), fetchOmlx(), fetchOpenClaw()]);
   } finally {
     pollInProgress = false;
   }
@@ -933,14 +929,23 @@ async function fetchModels() {
   } catch(e) { console.warn('models fetch error', e); }
 }
 
-// OpenClaw fetch (called by pollAll) - sequential to avoid blocking
+// OpenClaw fetch (called by pollAll) - concurrent with AbortController timeout
+// OpenClaw CLI commands are slow (~3-7s), use 8s timeout per request
 async function fetchOpenClaw() {
   try {
-    // Sequential fetches - each times out individually so one slow endpoint doesn't block others
-    const st = await fetch('/openclaw/status').then(r => r.ok ? r.json() : null).catch(() => null);
-    const hl = await fetch('/openclaw/health').then(r => r.ok ? r.json() : null).catch(() => null);
-    const ag = await fetch('/openclaw/agents').then(r => r.ok ? r.json() : null).catch(() => null);
-    const ss = await fetch('/openclaw/sessions').then(r => r.ok ? r.json() : null).catch(() => null);
+    const withTimeout = (url, ms) => {
+      const ctrl = new AbortController();
+      const t = setTimeout(() => ctrl.abort(), ms);
+      return fetch(url, { signal: ctrl.signal })
+        .then(r => { clearTimeout(t); return r.ok ? r.json() : null; })
+        .catch(() => { clearTimeout(t); return null; });
+    };
+    const [st, hl, ag, ss] = await Promise.all([
+      withTimeout('/openclaw/status', 8000),
+      withTimeout('/openclaw/health', 8000),
+      withTimeout('/openclaw/agents', 10000),
+      withTimeout('/openclaw/sessions', 12000),
+    ]);
 
     if (!st) return;
 
