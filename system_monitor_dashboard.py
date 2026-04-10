@@ -853,10 +853,19 @@ async function fetchData() {
   } catch(e) { console.warn('fetch error', e); }
 }
 
-// Always poll all data globally (system + omlx + openclaw)
+// Always poll all data globally (system + omlx + openclaw), sequential to avoid connection pool saturation
+let pollInProgress = false;
 async function pollAll() {
-  if (!paused) {
-    await Promise.allSettled([fetchData(), fetchOmlx(), fetchOpenClaw()]);
+  if (paused || pollInProgress) return;
+  pollInProgress = true;
+  try {
+    await fetchData();
+    await fetchOmlx();
+    await fetchOpenClaw();
+  } catch(e) {
+    // ignore - individual fetch functions handle their own errors
+  } finally {
+    pollInProgress = false;
   }
 }
 
@@ -924,16 +933,14 @@ async function fetchModels() {
   } catch(e) { console.warn('models fetch error', e); }
 }
 
-// OpenClaw fetch (called by pollAll)
+// OpenClaw fetch (called by pollAll) - sequential to avoid blocking
 async function fetchOpenClaw() {
   try {
-    // Gateway status
-    const [st, hl, ag, ss] = await Promise.all([
-      fetch('/openclaw/status').then(r => r.ok ? r.json() : null),
-      fetch('/openclaw/health').then(r => r.ok ? r.json() : null),
-      fetch('/openclaw/agents').then(r => r.ok ? r.json() : null),
-      fetch('/openclaw/sessions').then(r => r.ok ? r.json() : null),
-    ]);
+    // Sequential fetches - each times out individually so one slow endpoint doesn't block others
+    const st = await fetch('/openclaw/status').then(r => r.ok ? r.json() : null).catch(() => null);
+    const hl = await fetch('/openclaw/health').then(r => r.ok ? r.json() : null).catch(() => null);
+    const ag = await fetch('/openclaw/agents').then(r => r.ok ? r.json() : null).catch(() => null);
+    const ss = await fetch('/openclaw/sessions').then(r => r.ok ? r.json() : null).catch(() => null);
 
     if (!st) return;
 
@@ -1271,10 +1278,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
         elif self.path.startswith("/openclaw/sessions"):
             # Proxy: openclaw sessions --all-agents --json
+            # NOTE: this CLI command can take ~7s to respond
             try:
                 import subprocess
                 r = subprocess.run(['openclaw', 'sessions', '--all-agents', '--json'],
-                                   capture_output=True, timeout=10)
+                                   capture_output=True, timeout=30)
                 out = r.stdout.decode().strip()
                 try:
                     data = json.loads(out)
