@@ -1373,7 +1373,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self.end_headers()
 
 
-class QuietTCPServer(socketserver.TCPServer):
+class QuietTCPServer(socketserver.ThreadingTCPServer):
     allow_reuse_address = True
     daemon_threads = True
 
