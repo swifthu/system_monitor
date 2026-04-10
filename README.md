@@ -78,8 +78,22 @@ python system_monitor_dashboard.py --host 0.0.0.0 --port 8001
 ## 自适应节电
 
 - **页面隐藏时**：自动停止所有轮询，节省浏览器资源
-- **无请求时**：后端 collector 在 3 × interval（默认 24 秒）无请求后进入空闲状态，跳过数据采集
-- **Tab 级**：oMLX 和 OpenClaw tab 仅在激活时轮询，互相独立
+- **无请求时**：后端 collector 在 5 分钟无请求后进入空闲状态，跳过数据采集
+- **Tab 级独立刷新**：SYSTEM + oMLX 共享 slider 控制的轮询间隔；OPENCLAW 独立 10s 固定刷新（OpenClaw CLI 命令较慢 ~5-10s）
+
+## 架构说明
+
+- **并发处理**：使用 `ThreadingTCPServer`，每个 HTTP 请求独立线程处理，OpenClaw 的 4 个并发 CLI 请求可真正并行执行
+- **后端**：Python 3.12，psutil（系统数据）+ macmon（GPU/功率数据）
+- **前端**：原生 HTML/CSS/JS，无框架依赖，Canvas 绘制 sparkline
+- **oMLX 集成**：Python 代理端点转发 HTTP 请求，绕过 CORS 限制
+- **OpenClaw 集成**：调用 `openclaw gateway call` 和 `openclaw agents/sessions` CLI 命令获取数据
+
+## 平台
+
+- **macOS only**
+- **Apple Silicon** 优先使用 `macmon`（精确 GPU 功耗，无需 sudo）
+- **Intel Mac** 使用 `powermetrics`（需要 sudo）
 
 ## 安装
 
@@ -110,16 +124,3 @@ system_monitor/
     ├── test_system_monitor.py  # 系统监控单元测试
     └── test_dashboard.py       # Dashboard HTTP 端点集成测试
 ```
-
-## 架构说明
-
-- **后端**：Python 3.12，psutil（系统数据）+ macmon（GPU/功率数据）
-- **前端**：原生 HTML/CSS/JS，无框架依赖，Canvas 绘制 sparkline
-- **oMLX 集成**：Python 代理端点转发 HTTP 请求，绕过 CORS 限制
-- **OpenClaw 集成**：调用 `openclaw gateway call` 和 `openclaw agents/sessions` CLI 命令获取数据
-
-## 平台
-
-- **macOS only**
-- **Apple Silicon** 优先使用 `macmon`（精确 GPU 功耗，无需 sudo）
-- **Intel Mac** 使用 `powermetrics`（需要 sudo）
