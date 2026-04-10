@@ -156,6 +156,7 @@ HTML = """<!DOCTYPE html>
 <header>
   <h1>System Monitor <span>/ Jimmy's Mac mini</span></h1>
   <div style="display:flex;align-items:center;gap:16px;">
+    <div id="fetch-error" style="display:none;font-size:11px;color:#fc8181;background:#fed7d7;padding:2px 8px;border-radius:10px;">⚠ 数据过期</div>
     <div class="timestamp" id="ts">--</div>
     <div class="interval-ctrl">
       <label>Interval</label>
@@ -501,7 +502,7 @@ HTML = """<!DOCTYPE html>
   </div>
 </div>
 
-<footer>Auto-refresh 8s &nbsp;·&nbsp; Source: macmon &nbsp;·&nbsp; <span class="live-dot"></span>Live</footer>
+<footer>Auto-refresh <span id="footer-interval">2</span>s &nbsp;·&nbsp; Source: macmon &nbsp;·&nbsp; <span class="live-dot"></span>Live</footer>
 
 <script>
 const API = '/json';
@@ -849,8 +850,13 @@ function updateUI(data) {
 async function fetchData() {
   try {
     const r = await fetch(API + '?t=' + Date.now());
-    if (r.ok) updateUI(await r.json());
-  } catch(e) { console.warn('fetch error', e); }
+    if (r.ok) {
+      updateUI(await r.json());
+      el('fetch-error').style.display = 'none';
+    } else {
+      el('fetch-error').style.display = 'inline-block';
+    }
+  } catch(e) { el('fetch-error').style.display = 'inline-block'; console.warn('fetch error', e); }
 }
 
 // Always poll all data globally (system + omlx + openclaw), concurrent
@@ -896,7 +902,8 @@ async function fetchOmlx() {
     // Tasks
     el('oml-active-req').textContent = d.active_requests || 0;
     el('oml-waiting-req').textContent = d.waiting_requests || 0;
-    fetchModels();
+    // fetchModels must be awaited to prevent race with next poll cycle
+    await fetchModels();
   } catch(e) { console.warn('oml fetch error', e); }
 }
 async function fetchModels() {
@@ -951,7 +958,9 @@ async function fetchOpenClaw() {
 
     // Gateway card
     el('oc-version').textContent = st.runtimeVersion || '--';
-    el('oc-uptime').textContent = '--';
+    // uptime is in seconds from the status API
+    const uptimeSec = st.uptime;
+    el('oc-uptime').textContent = uptimeSec != null ? (uptimeSec >= 3600 ? Math.round(uptimeSec/3600) + 'h' : uptimeSec >= 60 ? Math.round(uptimeSec/60) + 'm' : uptimeSec + 's') : '--';
 
     // Tasks card
     const tk = st.tasks || {};
@@ -1005,15 +1014,8 @@ async function fetchOpenClaw() {
   } catch(e) { console.warn('openclaw fetch error', e); }
 }
 
-// Tab switching (no separate timers - all polling is global)
-document.querySelectorAll('.tab').forEach(t => {
-  t.addEventListener('click', () => {
-    document.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
-    document.querySelectorAll('.tab-panel').forEach(x => x.classList.remove('active'));
-    t.classList.add('active');
-    document.getElementById('tab-' + t.dataset.tab).classList.add('active');
-  });
-});
+// Tab switching — single registration (no separate timers, all polling is global)
+
 
 // Global polling timer
 let fetchTimer = null;
@@ -1038,7 +1040,7 @@ document.addEventListener('visibilitychange', () => {
   } else {
     paused = false;
     startTimer();
-    pollAll();
+    // pollAll is called by startTimer via setInterval, no need to call it here too
   }
 });
 
@@ -1048,6 +1050,7 @@ slider.addEventListener('input', function() {
   const v = parseInt(this.value);
   UPDATE_INTERVAL = v;
   el('int-val').textContent = v + 's';
+  el('footer-interval').textContent = v;
   startTimer();
   fetch('/api/interval?val=' + v).catch(() => {});
 });
@@ -1320,8 +1323,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     f"system_gpu_usage_percent {pi.get('gpu_usage_pct') or 0}",
                 ]
                 body = "\n".join(lines).encode()
-            except Exception:
-                body = b""
+            except Exception as e:
+                self.send_error(500, str(e))
+                return
             self.send_response(200)
             self.send_header("Content-Type", "text/plain")
             self.end_headers()
