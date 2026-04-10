@@ -853,9 +853,14 @@ async function fetchData() {
   } catch(e) { console.warn('fetch error', e); }
 }
 
-// oMLX polling (only when tab is active)
-let omlxTimer = null;
-let omlxTabActive = false;
+// Always poll all data globally (system + omlx + openclaw)
+async function pollAll() {
+  if (!paused) {
+    await Promise.allSettled([fetchData(), fetchOmlx(), fetchOpenClaw()]);
+  }
+}
+
+// oMLX fetch (called by pollAll)
 async function fetchOmlx() {
   try {
     const r = await fetch('/oml');
@@ -919,9 +924,7 @@ async function fetchModels() {
   } catch(e) { console.warn('models fetch error', e); }
 }
 
-// OpenClaw polling (only when tab is active)
-let ocTimer = null;
-let ocTabActive = false;
+// OpenClaw fetch (called by pollAll)
 async function fetchOpenClaw() {
   try {
     // Gateway status
@@ -989,56 +992,30 @@ async function fetchOpenClaw() {
     }
   } catch(e) { console.warn('openclaw fetch error', e); }
 }
-function startOcTimer() {
-  if (ocTimer) clearInterval(ocTimer);
-  ocTimer = setInterval(fetchOpenClaw, UPDATE_INTERVAL * 1000);
-  fetchOpenClaw();
-}
-function stopOcTimer() {
-  if (ocTimer) { clearInterval(ocTimer); ocTimer = null; }
-}
-function startOmlxTimer() {
-  if (omlxTimer) clearInterval(omlxTimer);
-  omlxTimer = setInterval(fetchOmlx, UPDATE_INTERVAL * 1000);
-  fetchOmlx();
-}
-function stopOmlxTimer() {
-  if (omlxTimer) { clearInterval(omlxTimer); omlxTimer = null; }
-}
 
-// Tab switching for oMLX and OpenClaw
+// Tab switching (no separate timers - all polling is global)
 document.querySelectorAll('.tab').forEach(t => {
   t.addEventListener('click', () => {
-    const isOmlx = t.dataset.tab === 'oml';
-    const isOc = t.dataset.tab === 'openclaw';
-    if (isOmlx && !omlxTabActive) {
-      omlxTabActive = true;
-      startOmlxTimer();
-    } else if (!isOmlx && omlxTabActive) {
-      omlxTabActive = false;
-      stopOmlxTimer();
-    }
-    if (isOc && !ocTabActive) {
-      ocTabActive = true;
-      startOcTimer();
-    } else if (!isOc && ocTabActive) {
-      ocTabActive = false;
-      stopOcTimer();
-    }
+    document.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
+    document.querySelectorAll('.tab-panel').forEach(x => x.classList.remove('active'));
+    t.classList.add('active');
+    document.getElementById('tab-' + t.dataset.tab).classList.add('active');
   });
 });
+
+// Global polling timer
 let fetchTimer = null;
 let paused = false;
 function startTimer() {
   if (fetchTimer) clearInterval(fetchTimer);
-  fetchTimer = setInterval(() => { if (!paused) fetchData(); }, UPDATE_INTERVAL * 1000);
+  fetchTimer = setInterval(pollAll, UPDATE_INTERVAL * 1000);
 }
 function restartTimer() {
   startTimer();
-  if (!paused) fetchData();
+  pollAll();
 }
 startTimer();
-fetchData();
+pollAll();
 
 // Page Visibility API - pause all polling when hidden
 document.addEventListener('visibilitychange', () => {
@@ -1046,14 +1023,10 @@ document.addEventListener('visibilitychange', () => {
     paused = true;
     if (fetchTimer) clearInterval(fetchTimer);
     fetchTimer = null;
-    stopOmlxTimer();
-    stopOcTimer();
   } else {
     paused = false;
     startTimer();
-    fetchData();
-    if (omlxTabActive) startOmlxTimer();
-    if (ocTabActive) startOcTimer();
+    pollAll();
   }
 });
 
