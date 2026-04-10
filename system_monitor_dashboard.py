@@ -274,7 +274,7 @@ HTML = """<!DOCTYPE html>
           <canvas class="spark-canvas" id="spark-mem" width="320" height="70"></canvas>
         </div>
         <div class="spark-item">
-          <div class="spark-title">CPU %</div>
+          <div class="spark-title">CPU/GPU %</div>
           <canvas class="spark-canvas" id="spark-cpu" width="320" height="70"></canvas>
         </div>
 
@@ -283,7 +283,7 @@ HTML = """<!DOCTYPE html>
           <canvas class="spark-canvas" id="spark-pw" width="320" height="70"></canvas>
         </div>
         <div class="spark-item">
-          <div class="spark-title">CPU °C</div>
+          <div class="spark-title">CPU/GPU °C</div>
           <canvas class="spark-canvas" id="spark-tcpu" width="320" height="70"></canvas>
         </div>
 
@@ -305,7 +305,7 @@ HTML = """<!DOCTYPE html>
   <div class="grid">
     <div class="card" style="border-left:3px solid #9f7aea;">
       <div class="card-title" style="color:#9f7aea;">Status</div>
-      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
         <div style="text-align:center;padding:8px 4px;background:#f7fafc;border-radius:8px;">
           <div style="font-size:22px;font-weight:800;color:#2d3748;" id="oml-models-discovered">--</div>
           <div style="font-size:9px;color:#a0aec0;text-transform:uppercase;letter-spacing:0.5px;">Discovered</div>
@@ -314,10 +314,10 @@ HTML = """<!DOCTYPE html>
           <div style="font-size:22px;font-weight:800;color:#48bb78;" id="oml-models-loaded">--</div>
           <div style="font-size:9px;color:#a0aec0;text-transform:uppercase;letter-spacing:0.5px;">Loaded</div>
         </div>
-        <div style="text-align:center;padding:8px 4px;background:#f7fafc;border-radius:8px;">
-          <div style="font-size:12px;font-weight:700;color:#4299e1;line-height:1.2;overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;" id="oml-models-default">--</div>
-          <div style="font-size:9px;color:#a0aec0;text-transform:uppercase;letter-spacing:0.5px;">Default</div>
-        </div>
+      </div>
+      <div style="text-align:center;padding:8px 4px;background:#f7fafc;border-radius:8px;margin-top:8px;">
+        <div style="font-size:14px;font-weight:700;color:#4299e1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" id="oml-models-default">--</div>
+        <div style="font-size:9px;color:#a0aec0;text-transform:uppercase;letter-spacing:0.5px;">Default</div>
       </div>
     </div>
 
@@ -364,7 +364,7 @@ HTML = """<!DOCTYPE html>
     </div>
 
     <div class="card" style="border-left:3px solid #718096;">
-      <div class="card-title" style="color:#718096;">Tokens</div>
+      <div class="card-title" style="color:#718096;">TOKENS &amp; TASK</div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
         <div style="text-align:center;padding:6px 4px;background:#f7fafc;border-radius:7px;">
           <div style="font-size:18px;font-weight:800;color:#2d3748;" id="oml-prompt-tok">--</div>
@@ -374,12 +374,6 @@ HTML = """<!DOCTYPE html>
           <div style="font-size:18px;font-weight:800;color:#2d3748;" id="oml-completion-tok">--</div>
           <div style="font-size:8px;color:#a0aec0;">Completion</div>
         </div>
-      </div>
-    </div>
-
-    <div class="card" style="border-left:3px solid #ed8936;">
-      <div class="card-title" style="color:#ed8936;">Tasks</div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
         <div style="text-align:center;padding:6px 4px;background:#f7fafc;border-radius:7px;">
           <div style="font-size:18px;font-weight:800;color:#2d3748;" id="oml-active-req">--</div>
           <div style="font-size:8px;color:#a0aec0;">Active</div>
@@ -403,7 +397,108 @@ HTML = """<!DOCTYPE html>
 
 <!-- OPENCLAW -->
 <div id="tab-openclaw" class="tab-panel">
-  <div class="placeholder">OpenClaw 状态面板 — 待接入</div>
+  <div class="grid">
+    <div class="card" style="border-left:3px solid #805ad5;">
+      <div class="card-title" style="color:#805ad5;">Gateway</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+        <div style="text-align:center;padding:6px 4px;background:#f7fafc;border-radius:7px;">
+          <div style="font-size:16px;font-weight:800;color:#2d3748;" id="oc-version">--</div>
+          <div style="font-size:8px;color:#a0aec0;">Version</div>
+        </div>
+        <div style="text-align:center;padding:6px 4px;background:#f7fafc;border-radius:7px;">
+          <div style="font-size:16px;font-weight:800;color:#2d3748;" id="oc-uptime">--</div>
+          <div style="font-size:8px;color:#a0aec0;">Uptime</div>
+        </div>
+      </div>
+      <div style="margin-top:8px;">
+        <div style="display:flex;justify-content:space-between;font-size:10px;color:#718096;margin-bottom:3px;">
+          <span>Tasks</span><span id="oc-task-pct">--</span>
+        </div>
+        <div class="bar-bg"><div class="bar-fill" id="oc-task-bar" style="width:0%;background:#805ad5;"></div></div>
+      </div>
+    </div>
+
+    <div class="card" style="border-left:3px solid #38a169;">
+      <div class="card-title" style="color:#38a169;">Tasks</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:6px;">
+        <div style="text-align:center;padding:5px 3px;background:#f7fafc;border-radius:6px;">
+          <div style="font-size:15px;font-weight:800;color:#2d3748;" id="oc-task-total">--</div>
+          <div style="font-size:7px;color:#a0aec0;">Total</div>
+        </div>
+        <div style="text-align:center;padding:5px 3px;background:#f7fafc;border-radius:6px;">
+          <div style="font-size:15px;font-weight:800;color:#3182ce;" id="oc-task-active">--</div>
+          <div style="font-size:7px;color:#a0aec0;">Active</div>
+        </div>
+        <div style="text-align:center;padding:5px 3px;background:#f7fafc;border-radius:6px;">
+          <div style="font-size:15px;font-weight:800;color:#48bb78;" id="oc-task-succeeded">--</div>
+          <div style="font-size:7px;color:#a0aec0;">Succeeded</div>
+        </div>
+        <div style="text-align:center;padding:5px 3px;background:#f7fafc;border-radius:6px;">
+          <div style="font-size:15px;font-weight:800;color:#fc8181;" id="oc-task-failed">--</div>
+          <div style="font-size:7px;color:#a0aec0;">Failed</div>
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px;margin-top:6px;">
+        <div style="text-align:center;padding:4px 3px;background:#f7fafc;border-radius:5px;">
+          <div style="font-size:12px;font-weight:700;color:#2d3748;" id="oc-task-cli">--</div>
+          <div style="font-size:7px;color:#a0aec0;">CLI</div>
+        </div>
+        <div style="text-align:center;padding:4px 3px;background:#f7fafc;border-radius:5px;">
+          <div style="font-size:12px;font-weight:700;color:#2d3748;" id="oc-task-cron">--</div>
+          <div style="font-size:7px;color:#a0aec0;">Cron</div>
+        </div>
+        <div style="text-align:center;padding:4px 3px;background:#f7fafc;border-radius:5px;">
+          <div style="font-size:12px;font-weight:700;color:#2d3748;" id="oc-task-timedout">--</div>
+          <div style="font-size:7px;color:#a0aec0;">Timeout</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card" style="border-left:3px solid #3182ce;">
+      <div class="card-title" style="color:#3182ce;">Telegram</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+        <div style="text-align:center;padding:6px 4px;background:#f7fafc;border-radius:7px;">
+          <div style="font-size:16px;font-weight:800;" id="oc-tg-status">--</div>
+          <div style="font-size:8px;color:#a0aec0;">Status</div>
+        </div>
+        <div style="text-align:center;padding:6px 4px;background:#f7fafc;border-radius:7px;">
+          <div style="font-size:14px;font-weight:700;color:#2d3748;" id="oc-tg-bot">--</div>
+          <div style="font-size:8px;color:#a0aec0;">Bot</div>
+        </div>
+      </div>
+      <div style="margin-top:8px;">
+        <div style="display:flex;justify-content:space-between;font-size:10px;color:#718096;margin-bottom:3px;">
+          <span>Telegram</span><span id="oc-tg-channels">--</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="card" style="border-left:3px solid #ed8936;">
+      <div class="card-title" style="color:#ed8936;">Sessions</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;">
+        <div style="text-align:center;padding:5px 3px;background:#f7fafc;border-radius:6px;">
+          <div style="font-size:15px;font-weight:800;color:#2d3748;" id="oc-sess-count">--</div>
+          <div style="font-size:7px;color:#a0aec0;">Total</div>
+        </div>
+        <div style="text-align:center;padding:5px 3px;background:#f7fafc;border-radius:6px;">
+          <div style="font-size:15px;font-weight:800;color:#ed8936;" id="oc-sess-minutes">--</div>
+          <div style="font-size:7px;color:#a0aec0;">Active Min</div>
+        </div>
+        <div style="text-align:center;padding:5px 3px;background:#f7fafc;border-radius:6px;">
+          <div style="font-size:15px;font-weight:800;color:#2d3748;" id="oc-sess-agents">--</div>
+          <div style="font-size:7px;color:#a0aec0;">Agents</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Agents List -->
+  <div class="grid" style="margin-top:0;">
+    <div class="card full" style="border-left:3px solid #ed8936;">
+      <div class="card-title" style="margin-bottom:10px;color:#ed8936;">Agents</div>
+      <div id="oc-agents-list" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:8px;"></div>
+    </div>
+  </div>
 </div>
 
 <footer>Auto-refresh 8s &nbsp;·&nbsp; Source: macmon &nbsp;·&nbsp; <span class="live-dot"></span>Live</footer>
@@ -582,35 +677,20 @@ function drawSpark2(canvasId, series) {
   ctx.strokeStyle = '#e2e8f0'; ctx.lineWidth = 0.5;
   ctx.beginPath(); ctx.moveTo(AXIS_LEFT, PAD_TOP); ctx.lineTo(AXIS_LEFT, PAD_TOP + plotH); ctx.stroke();
 
-  // Draw each series
+  // Draw each series (no fill, lines only)
   series.forEach(({ data, color }) => {
     if (!data || data.length < 2) return;
     const step = plotW / (data.length - 1);
-
-    // Gradient fill
-    const grad = ctx.createLinearGradient(0, PAD_TOP, 0, PAD_TOP + plotH);
-    grad.addColorStop(0, color + '44'); grad.addColorStop(1, color + '00');
-
-    const pts = [];
     let started = false;
+    ctx.beginPath();
     data.forEach((v, i) => {
       if (v == null) { started = false; return; }
       const x = AXIS_LEFT + i * step;
       const y = PAD_TOP + plotH - (Math.max(0, v) / m) * plotH;
-      pts.push([x, y]);
-      if (!started) { ctx.beginPath(); ctx.moveTo(x, y); started = true; }
+      if (!started) { ctx.moveTo(x, y); started = true; }
       else ctx.lineTo(x, y);
     });
-
-    if (pts.length > 0) {
-      ctx.lineTo(pts[pts.length - 1][0], PAD_TOP + plotH);
-      ctx.lineTo(pts[0][0], PAD_TOP + plotH);
-      ctx.closePath();
-      ctx.fillStyle = grad; ctx.fill();
-      ctx.beginPath(); started = false;
-      pts.forEach(([x, y]) => { if (!started) { ctx.moveTo(x, y); started = true; } else ctx.lineTo(x, y); });
-      ctx.strokeStyle = color; ctx.lineWidth = 1.5; ctx.stroke();
-    }
+    ctx.strokeStyle = color; ctx.lineWidth = 1.5; ctx.stroke();
   });
 
   // Legend top-right
@@ -838,6 +918,85 @@ async function fetchModels() {
     }).join('');
   } catch(e) { console.warn('models fetch error', e); }
 }
+
+// OpenClaw polling (only when tab is active)
+let ocTimer = null;
+let ocTabActive = false;
+async function fetchOpenClaw() {
+  try {
+    // Gateway status
+    const [st, hl, ag, ss] = await Promise.all([
+      fetch('/openclaw/status').then(r => r.ok ? r.json() : null),
+      fetch('/openclaw/health').then(r => r.ok ? r.json() : null),
+      fetch('/openclaw/agents').then(r => r.ok ? r.json() : null),
+      fetch('/openclaw/sessions').then(r => r.ok ? r.json() : null),
+    ]);
+
+    if (!st) return;
+
+    // Gateway card
+    el('oc-version').textContent = st.runtimeVersion || '--';
+    el('oc-uptime').textContent = '--';
+
+    // Tasks card
+    const tk = st.tasks || {};
+    el('oc-task-total').textContent = tk.total || 0;
+    el('oc-task-active').textContent = tk.active || 0;
+    const succ = tk.byStatus?.succeeded || 0;
+    const fail = tk.byStatus?.failed || 0;
+    const timed = tk.byStatus?.timed_out || 0;
+    el('oc-task-succeeded').textContent = succ;
+    el('oc-task-failed').textContent = fail;
+    el('oc-task-timedout').textContent = timed;
+    el('oc-task-cli').textContent = tk.byRuntime?.cli || 0;
+    el('oc-task-cron').textContent = tk.byRuntime?.cron || 0;
+    const taskPct = tk.total > 0 ? Math.round((succ + fail + timed) / tk.total * 100) : 0;
+    el('oc-task-pct').textContent = taskPct + '%';
+    el('oc-task-bar').style.width = taskPct + '%';
+
+    // Telegram card
+    if (hl) {
+      const tg = hl.channels?.telegram;
+      el('oc-tg-status').textContent = (tg?.running ? 'ON' : 'OFF');
+      el('oc-tg-status').style.color = tg?.running ? '#48bb78' : '#fc8181';
+      el('oc-tg-bot').textContent = tg?.probe?.bot?.username || '--';
+      const channels = (st.channelSummary || []).filter(c => c.includes('configured')).length;
+      el('oc-tg-channels').textContent = channels + ' configured';
+    }
+
+    // Sessions card
+    if (ss) {
+      el('oc-sess-count').textContent = ss.count || 0;
+      el('oc-sess-minutes').textContent = ss.activeMinutes != null ? ss.activeMinutes + 'm' : '--';
+      const agentIds = [...new Set((ss.sessions || []).map(s => s.agentId))];
+      el('oc-sess-agents').textContent = agentIds.length || '--';
+    }
+
+    // Agents list
+    if (ag && Array.isArray(ag)) {
+      const list = el('oc-agents-list');
+      list.innerHTML = ag.map(a => {
+        const sched = (st.heartbeat?.agents || []).find(h => h.agentId === a.id);
+        const schedStr = sched?.enabled ? sched.every : 'disabled';
+        const schedColor = sched?.enabled ? '#ed8936' : '#a0aec0';
+        const route = (a.routes || [])[0] || '--';
+        return '<div style="padding:8px 10px;background:#f7fafc;border-radius:7px;border-left:3px solid #ed8936;">' +
+          '<div style="font-size:13px;font-weight:700;color:#2d3748;">' + (a.name || a.id) + '</div>' +
+          '<div style="font-size:9px;color:#718096;margin-top:2px;">' + (a.model || '--').split('/').pop() + ' · ' + route + '</div>' +
+          '<div style="font-size:9px;color:' + schedColor + ';margin-top:2px;">⏱ ' + schedStr + '</div>' +
+          '</div>';
+      }).join('');
+    }
+  } catch(e) { console.warn('openclaw fetch error', e); }
+}
+function startOcTimer() {
+  if (ocTimer) clearInterval(ocTimer);
+  ocTimer = setInterval(fetchOpenClaw, UPDATE_INTERVAL * 1000);
+  fetchOpenClaw();
+}
+function stopOcTimer() {
+  if (ocTimer) { clearInterval(ocTimer); ocTimer = null; }
+}
 function startOmlxTimer() {
   if (omlxTimer) clearInterval(omlxTimer);
   omlxTimer = setInterval(fetchOmlx, UPDATE_INTERVAL * 1000);
@@ -847,16 +1006,24 @@ function stopOmlxTimer() {
   if (omlxTimer) { clearInterval(omlxTimer); omlxTimer = null; }
 }
 
-// Tab switching for oMLX
+// Tab switching for oMLX and OpenClaw
 document.querySelectorAll('.tab').forEach(t => {
   t.addEventListener('click', () => {
     const isOmlx = t.dataset.tab === 'oml';
+    const isOc = t.dataset.tab === 'openclaw';
     if (isOmlx && !omlxTabActive) {
       omlxTabActive = true;
       startOmlxTimer();
     } else if (!isOmlx && omlxTabActive) {
       omlxTabActive = false;
       stopOmlxTimer();
+    }
+    if (isOc && !ocTabActive) {
+      ocTabActive = true;
+      startOcTimer();
+    } else if (!isOc && ocTabActive) {
+      ocTabActive = false;
+      stopOcTimer();
     }
   });
 });
@@ -880,11 +1047,13 @@ document.addEventListener('visibilitychange', () => {
     if (fetchTimer) clearInterval(fetchTimer);
     fetchTimer = null;
     stopOmlxTimer();
+    stopOcTimer();
   } else {
     paused = false;
     startTimer();
     fetchData();
     if (omlxTabActive) startOmlxTimer();
+    if (ocTabActive) startOcTimer();
   }
 });
 
@@ -1059,6 +1228,91 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     self.send_header("Access-Control-Allow-Origin", "*")
                     self.end_headers()
                     self.wfile.write(resp.read())
+            except Exception as e:
+                self.send_error(502, str(e))
+            return
+
+        elif self.path.startswith("/openclaw/status"):
+            # Proxy: openclaw gateway call status --json
+            try:
+                import subprocess, json
+                r = subprocess.run(['openclaw', 'gateway', 'call', 'status', '--json'],
+                                   capture_output=True, timeout=10)
+                out = r.stdout.decode().strip()
+                # Try parse; if empty/wrap, use raw
+                try:
+                    data = json.loads(out)
+                    body = json.dumps(data).encode()
+                except:
+                    body = json.dumps({"raw": out}).encode()
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Access-Control-Allow-Origin", "*")
+                self.end_headers()
+                self.wfile.write(body)
+            except Exception as e:
+                self.send_error(502, str(e))
+            return
+
+        elif self.path.startswith("/openclaw/health"):
+            # Proxy: openclaw gateway call health --json
+            try:
+                import subprocess, json
+                r = subprocess.run(['openclaw', 'gateway', 'call', 'health', '--json'],
+                                   capture_output=True, timeout=10)
+                out = r.stdout.decode().strip()
+                try:
+                    data = json.loads(out)
+                    body = json.dumps(data).encode()
+                except:
+                    body = json.dumps({"raw": out}).encode()
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Access-Control-Allow-Origin", "*")
+                self.end_headers()
+                self.wfile.write(body)
+            except Exception as e:
+                self.send_error(502, str(e))
+            return
+
+        elif self.path.startswith("/openclaw/agents"):
+            # Proxy: openclaw agents list --json
+            try:
+                import subprocess, json
+                r = subprocess.run(['openclaw', 'agents', 'list', '--json'],
+                                   capture_output=True, timeout=10)
+                out = r.stdout.decode().strip()
+                try:
+                    data = json.loads(out)
+                    body = json.dumps(data).encode()
+                except:
+                    body = json.dumps({"raw": out}).encode()
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Access-Control-Allow-Origin", "*")
+                self.end_headers()
+                self.wfile.write(body)
+            except Exception as e:
+                self.send_error(502, str(e))
+            return
+
+        elif self.path.startswith("/openclaw/sessions"):
+            # Proxy: openclaw sessions --all-agents --json
+            try:
+                import subprocess, json
+                r = subprocess.run(['openclaw', 'sessions', '--all-agents', '--json'],
+                                   capture_output=True, timeout=10)
+                out = r.stdout.decode().strip()
+                try:
+                    data = json.loads(out)
+                    body = json.dumps(data).encode()
+                except:
+                    body = json.dumps({"raw": out}).encode()
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Access-Control-Allow-Origin", "*")
+                self.end_headers()
+                self.wfile.write(body)
             except Exception as e:
                 self.send_error(502, str(e))
             return
