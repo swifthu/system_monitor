@@ -859,16 +859,23 @@ async function fetchData() {
   } catch(e) { el('fetch-error').style.display = 'inline-block'; console.warn('fetch error', e); }
 }
 
-// Always poll all data globally (system + omlx + openclaw), concurrent
+// System + oMLX polling (uses UPDATE_INTERVAL slider)
 let pollInProgress = false;
-async function pollAll() {
+async function pollSystemAndOmlx() {
   if (paused || pollInProgress) return;
   pollInProgress = true;
   try {
-    await Promise.allSettled([fetchData(), fetchOmlx(), fetchOpenClaw()]);
+    await Promise.allSettled([fetchData(), fetchOmlx()]);
   } finally {
     pollInProgress = false;
   }
+}
+
+// OpenClaw polling — independent 10s fixed interval (CLI is slow, separate from main cycle)
+let ocPollTimer = null;
+function startOpenClawTimer() {
+  if (ocPollTimer) clearInterval(ocPollTimer);
+  ocPollTimer = setInterval(fetchOpenClaw, 10000);
 }
 
 // oMLX fetch (called by pollAll)
@@ -1017,19 +1024,22 @@ async function fetchOpenClaw() {
 // Tab switching — single registration (no separate timers, all polling is global)
 
 
-// Global polling timer
+// Global polling timer (SYSTEM + oMLX only)
 let fetchTimer = null;
 let paused = false;
 function startTimer() {
   if (fetchTimer) clearInterval(fetchTimer);
-  fetchTimer = setInterval(pollAll, UPDATE_INTERVAL * 1000);
+  fetchTimer = setInterval(pollSystemAndOmlx, UPDATE_INTERVAL * 1000);
 }
 function restartTimer() {
   startTimer();
-  pollAll();
+  pollSystemAndOmlx();
 }
 startTimer();
-pollAll();
+pollSystemAndOmlx();
+// Start OpenClaw independent timer (10s fixed)
+startOpenClawTimer();
+fetchOpenClaw(); // immediate first fetch
 
 // Page Visibility API - pause all polling when hidden
 document.addEventListener('visibilitychange', () => {
@@ -1037,10 +1047,11 @@ document.addEventListener('visibilitychange', () => {
     paused = true;
     if (fetchTimer) clearInterval(fetchTimer);
     fetchTimer = null;
+    if (ocPollTimer) { clearInterval(ocPollTimer); ocPollTimer = null; }
   } else {
     paused = false;
     startTimer();
-    // pollAll is called by startTimer via setInterval, no need to call it here too
+    startOpenClawTimer();
   }
 });
 
@@ -1383,7 +1394,7 @@ def run(host="127.0.0.1", port=8001, interval=8.0):
 
     def collector():
         global latest_data, _last_request_time
-        idle_threshold = collector_interval[0] * 3  # sleep if no request for 3x interval
+        idle_threshold = 300  # 5 minutes idle before collector skips snapshot
         while True:
             try:
                 # Check if there were recent requests
