@@ -1219,7 +1219,7 @@ def run(host="127.0.0.1", port=8001, interval=8.0):
 if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser()
-    parser.add_argument("--host", type=str, default="127.0.0.1", help="绑定地址 (默认: 127.0.0.1)")
+    parser.add_argument("--host", type=str, default="0.0.0.0", help="绑定地址 (默认: 0.0.0.0)")
     parser.add_argument("--port", type=int, default=8001)
     parser.add_argument("--interval", type=float, default=8.0)
     args = parser.parse_args()
