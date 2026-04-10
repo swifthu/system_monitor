@@ -38,7 +38,14 @@ macOS 系统监控工具，同时支持 **oMLX** 模型运行状态和 **OpenCla
 
 > 需要 OpenClaw Gateway 运行中（`openclaw gateway`），CLI 命令行工具已安装
 
-## 快速启动
+### QUOTA Tab
+| 监控项 | 说明 |
+|--------|------|
+| MiniMax QUOTA | 各模型 5H / Week 配额剩余量及进度条 |
+| MiniMax Reset | 5H 窗口剩余时间、周配额重置倒计时 |
+| BANWAGON | 月流量使用量 / 配额、RAM / Disk 配置、IP / OS 信息、重置倒计时 |
+
+> BANWAGON 配置位于 `config.json`（不提交到 git）
 
 ```bash
 # 进入项目目录

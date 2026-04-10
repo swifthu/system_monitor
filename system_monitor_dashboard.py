@@ -171,6 +171,7 @@ HTML = """<!DOCTYPE html>
   <div class="tab active" data-tab="system">SYSTEM</div>
   <div class="tab" data-tab="oml">oMLX</div>
   <div class="tab" data-tab="openclaw">OPENCLAW</div>
+  <div class="tab" data-tab="api">QUOTA</div>
 </div>
 
 <!-- SYSTEM -->
@@ -498,6 +499,49 @@ HTML = """<!DOCTYPE html>
     <div class="card full" style="border-left:3px solid #ed8936;">
       <div class="card-title" style="margin-bottom:10px;color:#ed8936;">Agents</div>
       <div id="oc-agents-list" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:8px;"></div>
+    </div>
+  </div>
+</div>
+
+<!-- QUOTA -->
+<div id="tab-api" class="tab-panel">
+  <div class="grid" style="grid-template-columns:1fr 1fr;">
+    <!-- MiniMax QUOTA card -->
+    <div class="card" style="border-left:3px solid #667eea;">
+      <div class="card-title" style="color:#667eea;">MiniMax QUOTA</div>
+      <div id="mm-models-list" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:6px;"></div>
+      <div style="display:flex;gap:16px;margin-top:8px;font-size:9px;color:#a0aec0;">
+        <span>5H: <span id="mm-reset-5h" style="color:#667eea;font-weight:600;">--</span></span>
+        <span>Week: <span id="mm-remain" style="color:#667eea;font-weight:600;">--</span></span>
+      </div>
+    </div>
+
+    <!-- BANWAGON card -->
+    <div class="card" style="border-left:3px solid #e53e3e;">
+      <div class="card-title" style="color:#e53e3e;">BANWAGON · <span id="bw-location">--</span></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:6px;">
+        <div style="text-align:center;padding:8px 4px;background:#f7fafc;border-radius:8px;">
+          <div style="font-size:16px;font-weight:800;color:#2d3748;" id="bw-used">--</div>
+          <div style="font-size:8px;color:#a0aec0;margin-top:2px;">of <span id="bw-total">--</span> GB</div>
+          <div class="bar-bg" style="margin-top:4px;height:2px;"><div class="bar-fill" id="bw-bar" style="width:0%;background:#e53e3e;"></div></div>
+        </div>
+        <div style="text-align:center;padding:8px 4px;background:#f7fafc;border-radius:8px;">
+          <div style="font-size:16px;font-weight:800;color:#2d3748;" id="bw-ram">--</div>
+          <div style="font-size:8px;color:#a0aec0;margin-top:2px;">RAM GB</div>
+        </div>
+        <div style="text-align:center;padding:8px 4px;background:#f7fafc;border-radius:8px;">
+          <div style="font-size:16px;font-weight:800;color:#2d3748;" id="bw-disk">--</div>
+          <div style="font-size:8px;color:#a0aec0;margin-top:2px;">Disk GB</div>
+        </div>
+        <div style="text-align:center;padding:8px 4px;background:#f7fafc;border-radius:8px;">
+          <div style="font-size:16px;font-weight:800;color:#e53e3e;" id="bw-reset">--</div>
+          <div style="font-size:8px;color:#a0aec0;margin-top:2px;">Reset d</div>
+        </div>
+      </div>
+      <div style="display:flex;gap:12px;margin-top:6px;font-size:9px;color:#a0aec0;">
+        <span>IP: <span id="bw-ip" style="color:#2d3748;font-weight:600;">--</span></span>
+        <span>OS: <span id="bw-os" style="color:#2d3748;font-weight:600;">--</span></span>
+      </div>
     </div>
   </div>
 </div>
@@ -878,6 +922,79 @@ function startOpenClawTimer() {
   ocPollTimer = setInterval(fetchOpenClaw, 10000);
 }
 
+// MiniMax API polling — independent 10s fixed interval
+let mmPollTimer = null;
+function startMiniMaxTimer() {
+  if (mmPollTimer) clearInterval(mmPollTimer);
+  mmPollTimer = setInterval(() => Promise.allSettled([fetchMiniMax(), fetchBanwagon()]), 10000);
+}
+async function fetchMiniMax() {
+  try {
+    const r = await fetch('/api/minimax');
+    if (!r.ok) return;
+    const d = await r.json();
+    // 5H window reset time remaining
+    el('mm-reset-5h').textContent = d.reset_5h || '--';
+    // Weekly time remain
+    el('mm-remain').textContent = d.time_remain || '--';
+    // Models list — hide models with no quota at all
+    const list = el('mm-models-list');
+    if (!list) return;
+    const models = (d.models || []).filter(m => m.total_5h > 0 || m.total_week > 0);
+    if (models.length === 0) {
+      list.innerHTML = '<div style="color:#a0aec0;font-size:11px;">No active quota</div>';
+      return;
+    }
+    list.innerHTML = models.map(m => {
+      const pct5h = m.total_5h > 0 ? Math.round((m.remain_5h / m.total_5h) * 100) : 0;
+      const pctW = m.total_week > 0 ? Math.round((m.remain_week / m.total_week) * 100) : 0;
+      const color5h = pct5h > 50 ? '#48bb78' : pct5h > 20 ? '#ed8936' : '#fc8181';
+      const colorW = pctW > 50 ? '#48bb78' : pctW > 20 ? '#ed8936' : '#fc8181';
+      const bar5h = m.total_5h > 0 ? `<div class="bar-bg" style="height:2px;margin-top:3px;"><div class="bar-fill" style="width:${pct5h}%;background:${color5h};border-radius:2px;"></div></div>` : '';
+      const barW = m.total_week > 0 ? `<div class="bar-bg" style="height:2px;margin-top:3px;"><div class="bar-fill" style="width:${pctW}%;background:${colorW};border-radius:2px;"></div></div>` : '';
+      const modelName = m.name || '--';
+      return `<div style="background:#f7fafc;border-radius:6px;padding:6px 8px;border-left:3px solid #667eea;">
+        <div style="font-size:10px;font-weight:700;color:#2d3748;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${modelName}">${modelName}</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-top:3px;">
+          <div>
+            <div style="font-size:8px;color:#a0aec0;">5H</div>
+            <div style="font-size:11px;font-weight:700;color:#2d3748;">${m.remain_5h}</div>
+            ${bar5h}
+          </div>
+          <div>
+            <div style="font-size:8px;color:#a0aec0;">Week</div>
+            <div style="font-size:11px;font-weight:700;color:#2d3748;">${m.remain_week}</div>
+            ${barW}
+          </div>
+        </div>
+      </div>`;
+    }).join('');
+  } catch(e) { console.warn('minimax fetch error', e); }
+}
+
+async function fetchBanwagon() {
+  try {
+    const r = await fetch('/api/banwagon');
+    if (!r.ok) return;
+    const d = await r.json();
+    const used = d.used_gb != null ? d.used_gb : '--';
+    const total = d.total_gb != null ? d.total_gb : '--';
+    const pct = d.pct != null ? Math.min(100, d.pct) : 0;
+    el('bw-used').textContent = used;
+    el('bw-total').textContent = total;
+    el('bw-ram').textContent = d.ram_gb != null ? d.ram_gb : '--';
+    el('bw-disk').textContent = d.disk_gb != null ? d.disk_gb : '--';
+    el('bw-reset').textContent = d.reset_in || '--';
+    el('bw-location').textContent = d.location || '--';
+    el('bw-ip').textContent = d.ip || '--';
+    el('bw-os').textContent = d.os || '--';
+    const barColor = pct > 90 ? '#fc8181' : pct > 70 ? '#ed8936' : '#48bb78';
+    const bar = el('bw-bar');
+    bar.style.width = pct + '%';
+    bar.style.background = barColor;
+  } catch(e) { console.warn('banwagon fetch error', e); }
+}
+
 // oMLX fetch (called by pollAll)
 async function fetchOmlx() {
   try {
@@ -1040,6 +1157,9 @@ pollSystemAndOmlx();
 // Start OpenClaw independent timer (10s fixed)
 startOpenClawTimer();
 fetchOpenClaw(); // immediate first fetch
+// Start MiniMax independent timer (10s fixed)
+startMiniMaxTimer();
+Promise.allSettled([fetchMiniMax(), fetchBanwagon()]); // immediate first fetch
 
 // Page Visibility API - pause all polling when hidden
 document.addEventListener('visibilitychange', () => {
@@ -1048,10 +1168,12 @@ document.addEventListener('visibilitychange', () => {
     if (fetchTimer) clearInterval(fetchTimer);
     fetchTimer = null;
     if (ocPollTimer) { clearInterval(ocPollTimer); ocPollTimer = null; }
+    if (mmPollTimer) { clearInterval(mmPollTimer); mmPollTimer = null; }
   } else {
     paused = false;
     startTimer();
     startOpenClawTimer();
+    startMiniMaxTimer();
   }
 });
 
@@ -1308,6 +1430,171 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     body = json.dumps(data).encode()
                 except:
                     body = json.dumps({"raw": out}).encode()
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Access-Control-Allow-Origin", "*")
+                self.end_headers()
+                self.wfile.write(body)
+            except Exception as e:
+                self.send_error(502, str(e))
+            return
+
+        elif self.path.startswith("/api/minimax"):
+            # Proxy to MiniMax API — fetch coding plan quota remains
+            try:
+                import urllib.request
+                import json as _json
+                from datetime import datetime
+
+                # Load config
+                cfg_path = os.path.join(os.path.dirname(__file__), "config.json")
+                with open(cfg_path) as f:
+                    cfg = _json.load(f)
+                group_id = cfg.get("minimax_group_id", "")
+                api_key = cfg.get("minimax_api_key", "")
+
+                url = f"https://www.minimaxi.com/v1/api/openplatform/coding_plan/remains?GroupId={group_id}"
+                req = urllib.request.Request(url, headers={"Authorization": f"Bearer {api_key}"})
+                with urllib.request.urlopen(req, timeout=10) as resp:
+                    data = _json.loads(resp.read())
+
+                    # Build per-model list
+                    models_out = []
+                    main_model = None
+                    for m in (data.get("model_remains") or []):
+                        name = m.get("model_name") or "--"
+                        total_5h = m.get("current_interval_total_count", 0)
+                        used_5h = m.get("current_interval_usage_count", 0)
+                        remain_5h = max(0, total_5h - used_5h)
+                        total_week = m.get("current_weekly_total_count", 0)
+                        used_week = m.get("current_weekly_usage_count", 0)
+                        remain_week = max(0, total_week - used_week)
+                        models_out.append({
+                            "name": name,
+                            "remain_5h": remain_5h,
+                            "total_5h": total_5h,
+                            "remain_week": remain_week,
+                            "total_week": total_week,
+                        })
+                        if "MiniMax-M" in name and main_model is None:
+                            main_model = m
+
+                    mm = main_model or (data.get("model_remains") or [{}])[0]
+
+                    # 5 Hour quota
+                    total_5h = mm.get("current_interval_total_count", 0)
+                    used_5h = mm.get("current_interval_usage_count", 0)
+                    remain_5h = max(0, total_5h - used_5h)
+                    quota_5hour = str(remain_5h) if total_5h > 0 else "--"
+
+                    # 5H window reset time (remaining time until reset) — shared by all models
+                    end_ts = mm.get("end_time", 0)
+                    if end_ts > 0:
+                        end_dt = datetime.fromtimestamp(end_ts / 1000)
+                        now = datetime.now()
+                        diff_sec = (end_dt - now).total_seconds()
+                        if diff_sec > 0:
+                            if diff_sec >= 3600:
+                                reset_5h = f"{diff_sec/3600:.1f}h"
+                            elif diff_sec >= 60:
+                                reset_5h = f"{diff_sec/60:.0f}m"
+                            else:
+                                reset_5h = f"{diff_sec:.0f}s"
+                        else:
+                            reset_5h = "now"
+                    else:
+                        reset_5h = "--"
+
+                    # Week quota
+                    total_week = mm.get("current_weekly_total_count", 0)
+                    used_week = mm.get("current_weekly_usage_count", 0)
+                    remain_week = max(0, total_week - used_week)
+                    quota_week = str(remain_week) if total_week > 0 else "--"
+
+                    # Weekly time remain
+                    remains_ms = mm.get("weekly_remains_time", 0) or 0
+                    if remains_ms >= 86400000:
+                        time_remain = f"{remains_ms/86400000:.1f}d"
+                    elif remains_ms >= 3600000:
+                        time_remain = f"{remains_ms/3600000:.1f}h"
+                    elif remains_ms >= 60000:
+                        time_remain = f"{remains_ms/60000:.0f}m"
+                    elif remains_ms > 0:
+                        time_remain = f"{remains_ms/1000:.0f}s"
+                    else:
+                        time_remain = "--"
+
+                    out = {
+                        "quota_5hour": quota_5hour,
+                        "quota_week": quota_week,
+                        "time_remain": time_remain,
+                        "reset_5h": reset_5h,
+                        "models": [{"reset_5h": reset_5h, **m} for m in models_out],
+                    }
+                    body = _json.dumps(out).encode()
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Access-Control-Allow-Origin", "*")
+                self.end_headers()
+                self.wfile.write(body)
+            except Exception as e:
+                self.send_error(502, str(e))
+            return
+
+        elif self.path.startswith("/api/banwagon"):
+            # Proxy to 64Clouds BANWAGON API — get service info and bandwidth
+            try:
+                import urllib.request
+                import json as _json
+                from datetime import datetime
+
+                cfg_path = os.path.join(os.path.dirname(__file__), "config.json")
+                with open(cfg_path) as f:
+                    cfg = _json.load(f)
+                veid = cfg.get("banwagon_veid", "")
+                api_key = cfg.get("banwagon_api_key", "")
+
+                url = f"https://api.64clouds.com/v1/getServiceInfo?veid={veid}&api_key={api_key}"
+                req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+                with urllib.request.urlopen(req, timeout=10) as resp:
+                    data = _json.loads(resp.read())
+
+                    data_counter = data.get("data_counter", 0)  # bytes used
+                    plan_data = data.get("plan_monthly_data", 0)  # bytes total
+                    next_reset = data.get("data_next_reset", 0)  # unix timestamp
+
+                    # Convert to GB
+                    used_gb = data_counter / (1024**3)
+                    total_gb = plan_data / (1024**3)
+                    pct = round((data_counter / plan_data) * 100, 1) if plan_data > 0 else 0
+
+                    # Days until reset
+                    if next_reset > 0:
+                        now = datetime.now().timestamp()
+                        days_left = (next_reset - now) / 86400
+                        if days_left < 0:
+                            reset_str = "overdue"
+                        elif days_left < 1:
+                            reset_str = f"{int(days_left*24)}h"
+                        elif days_left < 30:
+                            reset_str = f"{days_left:.1f}d"
+                        else:
+                            reset_str = f"{days_left:.0f}d"
+                    else:
+                        reset_str = "--"
+
+                    out = {
+                        "used_gb": round(used_gb, 1),
+                        "total_gb": round(total_gb, 1),
+                        "pct": pct,
+                        "reset_in": reset_str,
+                        "ram_gb": round(data.get("plan_ram", 0) / (1024**3), 1),
+                        "disk_gb": round(data.get("plan_disk", 0) / (1024**3), 1),
+                        "location": data.get("node_location", "--"),
+                        "ip": (data.get("ip_addresses") or ["--"])[0],
+                        "os": data.get("os", "--"),
+                    }
+                    body = _json.dumps(out).encode()
                 self.send_response(200)
                 self.send_header("Content-Type", "application/json")
                 self.send_header("Access-Control-Allow-Origin", "*")
