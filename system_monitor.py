@@ -97,6 +97,9 @@ def get_cpu_usage() -> dict:
     """获取 CPU 使用率（user/system/idle）"""
     try:
         import psutil
+        # Warm-up: first call with interval=None gives baseline since boot,
+        # then interval=0 returns meaningful deltas on subsequent calls
+        psutil.cpu_percent(interval=None)
         per_cpu = psutil.cpu_percent(interval=0, percpu=True)
         total = psutil.cpu_percent(interval=0)
         # user vs system 需要算 cputimes
@@ -113,6 +116,7 @@ def get_cpu_usage() -> dict:
             "system": round(system_pct, 1),
             "idle": round(100 - total, 1),
             "cores": len(per_cpu),
+            "per_core": [round(p, 1) for p in per_cpu],
         }
     except Exception:
         return _get_cpu_usage_fallback()
@@ -302,7 +306,8 @@ def _macmon_read() -> Optional[dict]:
                 "cpu_temp_c": round(data.get("temp", {}).get("cpu_temp_avg", 0), 1),
                 "gpu_temp_c": round(data.get("temp", {}).get("gpu_temp_avg", 0), 1),
                 "cpu_usage_pct": round(data.get("cpu_usage_pct", 0) * 100, 1),
-                "gpu_usage_pct": round(data.get("gpu_usage", [0, 0])[1] * 100, 1),
+                "gpu_usage_pct": round(data.get("gpu_usage", [0, 0])[1] * 100, 1) if data.get("gpu_usage") else 0,
+                "gpu_usage": [round(v, 1) for v in data.get("gpu_usage", [])],
                 "source": "macmon",
             }
         except Exception:
@@ -422,6 +427,7 @@ class SystemSnapshot:
     cpu_system: float
     cpu_idle: float
     cpu_cores: int
+    cpu_per_core: list
     # 功率
     power_info: dict
     # 磁盘
@@ -460,6 +466,7 @@ def take_snapshot() -> SystemSnapshot:
         cpu_system=cpu["system"],
         cpu_idle=cpu["idle"],
         cpu_cores=cpu["cores"],
+        cpu_per_core=cpu.get("per_core", []),
         power_info=power,
         disk_read_mb_s=disk_io["read_mb_s"],
         disk_write_mb_s=disk_io["write_mb_s"],

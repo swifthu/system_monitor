@@ -175,18 +175,20 @@ HTML = """<!DOCTYPE html>
 <!-- SYSTEM -->
 <div id="tab-system" class="tab-panel active">
   <div class="grid">
-    <!-- CPU -->
+    <!-- CPU + GPU 合并卡片 -->
     <div class="card cpu">
-      <div class="card-title">CPU</div>
-      <div class="big-val" id="cpu-pct">--<span class="big-unit">%</span></div>
-      <div class="bar-bg"><div class="bar-fill cpu" id="cpu-bar" style="width:0%"></div></div>
-    </div>
-
-    <!-- GPU (独立卡片) -->
-    <div class="card" style="border-left:3px solid var(--power);">
-      <div class="card-title" style="color:var(--power);">GPU</div>
-      <div class="big-val" id="gpu-pct" style="color:var(--power);">--<span class="big-unit">%</span></div>
-      <div class="bar-bg"><div class="bar-fill" id="gpu-bar" style="width:0%;background:var(--power)"></div></div>
+      <div style="display:grid;grid-template-columns:1fr;gap:16px;">
+        <div>
+          <div class="card-title">CPU</div>
+          <div class="big-val" id="cpu-pct">--<span class="big-unit">%</span></div>
+          <div class="bar-bg"><div class="bar-fill cpu" id="cpu-bar" style="width:0%"></div></div>
+        </div>
+        <div>
+          <div class="card-title" style="color:var(--power);">GPU</div>
+          <div class="big-val" id="gpu-pct">--<span class="big-unit">%</span></div>
+          <div class="bar-bg"><div class="bar-fill" id="gpu-bar" style="width:0%;background:var(--power)"></div></div>
+        </div>
+      </div>
     </div>
 
     <!-- Memory -->
@@ -205,22 +207,8 @@ HTML = """<!DOCTYPE html>
     <div class="card power">
       <div class="card-title">Power</div>
       <div class="big-val" id="pw-total">--<span class="big-unit">W</span></div>
-      <div class="sub-text">SoC + System</div>
-      <div class="power-row">
-        <div class="power-label">SoC</div>
-        <div class="power-bar-bg"><div class="power-bar-fill" id="pw-soc-bar" style="width:0%"></div></div>
-        <div class="power-val" id="pw-soc-val">--</div>
-      </div>
-      <div class="power-row">
-        <div class="power-label">SYS</div>
-        <div class="power-bar-bg"><div class="power-bar-fill" id="pw-sys-bar" style="width:0%"></div></div>
-        <div class="power-val" id="pw-sys-val">--</div>
-      </div>
-      <div class="power-row" style="margin-top:4px;border-top:1px solid var(--border);padding-top:6px;">
-        <div class="power-label" style="font-weight:700;">Total</div>
-        <div class="power-bar-bg"><div class="power-bar-fill" id="pw-total-bar" style="width:0%;background:#2d3748;"></div></div>
-        <div class="power-val" id="pw-total-disp" style="font-weight:800;">--</div>
-      </div>
+      <div class="sub-text" id="pw-sub" style="display:none;"></div>
+      <div id="pw-rows"></div>
     </div>
 
     <!-- Temperature -->
@@ -314,7 +302,103 @@ HTML = """<!DOCTYPE html>
 
 <!-- oMLX -->
 <div id="tab-oml" class="tab-panel">
-  <div class="placeholder">oMLX 监控面板 — 待接入</div>
+  <div class="grid">
+    <div class="card" style="border-left:3px solid #9f7aea;">
+      <div class="card-title" style="color:#9f7aea;">Status</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;">
+        <div style="text-align:center;padding:8px 4px;background:#f7fafc;border-radius:8px;">
+          <div style="font-size:22px;font-weight:800;color:#2d3748;" id="oml-models-discovered">--</div>
+          <div style="font-size:9px;color:#a0aec0;text-transform:uppercase;letter-spacing:0.5px;">Discovered</div>
+        </div>
+        <div style="text-align:center;padding:8px 4px;background:#f7fafc;border-radius:8px;">
+          <div style="font-size:22px;font-weight:800;color:#48bb78;" id="oml-models-loaded">--</div>
+          <div style="font-size:9px;color:#a0aec0;text-transform:uppercase;letter-spacing:0.5px;">Loaded</div>
+        </div>
+        <div style="text-align:center;padding:8px 4px;background:#f7fafc;border-radius:8px;">
+          <div style="font-size:12px;font-weight:700;color:#4299e1;line-height:1.2;overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;" id="oml-models-default">--</div>
+          <div style="font-size:9px;color:#a0aec0;text-transform:uppercase;letter-spacing:0.5px;">Default</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card" style="border-left:3px solid #ed8936;">
+      <div class="card-title" style="color:#ed8936;">Performance</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+        <div style="text-align:center;padding:6px 4px;background:#f7fafc;border-radius:7px;">
+          <div style="font-size:18px;font-weight:800;color:#2d3748;" id="oml-prefill-tps">--</div>
+          <div style="font-size:8px;color:#a0aec0;">Prefill tok/s</div>
+        </div>
+        <div style="text-align:center;padding:6px 4px;background:#f7fafc;border-radius:7px;">
+          <div style="font-size:18px;font-weight:800;color:#2d3748;" id="oml-gen-tps">--</div>
+          <div style="font-size:8px;color:#a0aec0;">Gen tok/s</div>
+        </div>
+        <div style="text-align:center;padding:6px 4px;background:#f7fafc;border-radius:7px;">
+          <div style="font-size:18px;font-weight:800;color:#2d3748;" id="oml-cache-eff">--</div>
+          <div style="font-size:8px;color:#a0aec0;">Cache %</div>
+        </div>
+        <div style="text-align:center;padding:6px 4px;background:#f7fafc;border-radius:7px;">
+          <div style="font-size:18px;font-weight:800;color:#2d3748;" id="oml-requests">--</div>
+          <div style="font-size:8px;color:#a0aec0;">Requests</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card" style="border-left:3px solid #38b2ac;">
+      <div class="card-title" style="color:#38b2ac;">Memory</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+        <div style="text-align:center;padding:6px 4px;background:#f7fafc;border-radius:7px;">
+          <div style="font-size:18px;font-weight:800;color:#2d3748;" id="oml-mem-used">--</div>
+          <div style="font-size:8px;color:#a0aec0;">Used</div>
+        </div>
+        <div style="text-align:center;padding:6px 4px;background:#f7fafc;border-radius:7px;">
+          <div style="font-size:18px;font-weight:800;color:#2d3748;" id="oml-mem-max">--</div>
+          <div style="font-size:8px;color:#a0aec0;">Max</div>
+        </div>
+      </div>
+      <div style="margin-top:8px;">
+        <div style="display:flex;justify-content:space-between;font-size:10px;color:#718096;margin-bottom:3px;">
+          <span>Memory</span><span id="oml-mem-pct">--%</span>
+        </div>
+        <div class="bar-bg"><div class="bar-fill" id="oml-mem-bar" style="width:0%;background:#38b2ac;"></div></div>
+      </div>
+    </div>
+
+    <div class="card" style="border-left:3px solid #718096;">
+      <div class="card-title" style="color:#718096;">Tokens</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+        <div style="text-align:center;padding:6px 4px;background:#f7fafc;border-radius:7px;">
+          <div style="font-size:18px;font-weight:800;color:#2d3748;" id="oml-prompt-tok">--</div>
+          <div style="font-size:8px;color:#a0aec0;">Prompt</div>
+        </div>
+        <div style="text-align:center;padding:6px 4px;background:#f7fafc;border-radius:7px;">
+          <div style="font-size:18px;font-weight:800;color:#2d3748;" id="oml-completion-tok">--</div>
+          <div style="font-size:8px;color:#a0aec0;">Completion</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card" style="border-left:3px solid #ed8936;">
+      <div class="card-title" style="color:#ed8936;">Tasks</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+        <div style="text-align:center;padding:6px 4px;background:#f7fafc;border-radius:7px;">
+          <div style="font-size:18px;font-weight:800;color:#2d3748;" id="oml-active-req">--</div>
+          <div style="font-size:8px;color:#a0aec0;">Active</div>
+        </div>
+        <div style="text-align:center;padding:6px 4px;background:#f7fafc;border-radius:7px;">
+          <div style="font-size:18px;font-weight:800;color:#2d3748;" id="oml-waiting-req">--</div>
+          <div style="font-size:8px;color:#a0aec0;">Waiting</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Model List -->
+  <div class="grid">
+    <div class="card full" style="border-left:3px solid #9f7aea;">
+      <div class="card-title" style="margin-bottom:10px;color:#9f7aea;">Models</div>
+      <div id="oml-models-list" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:8px;"></div>
+    </div>
+  </div>
 </div>
 
 <!-- OPENCLAW -->
@@ -343,6 +427,49 @@ document.querySelectorAll('.tab').forEach(t => {
     document.getElementById('tab-' + t.dataset.tab).classList.add('active');
   });
 });
+
+// Mini sparkline (no axes, simple line)
+function drawMiniSpark(canvasId, data, color, maxVal) {
+  const canvas = el(canvasId);
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width, H = canvas.height;
+  ctx.clearRect(0, 0, W, H);
+  if (!data || data.length < 2) return;
+
+  const valid = data.filter(v => v != null);
+  const m = maxVal || (valid.length ? Math.max(...valid, 1) * 1.2 : 100);
+  const step = W / Math.max(data.length - 1, 1);
+
+  ctx.beginPath();
+  let started = false;
+  data.forEach((v, i) => {
+    if (v == null) { started = false; return; }
+    const x = i * step;
+    const y = H - (Math.max(0, v) / m) * H;
+    if (!started) { ctx.moveTo(x, y); started = true; }
+    else ctx.lineTo(x, y);
+  });
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+
+  // Gradient fill
+  if (data.length > 1) {
+    const lastValid = data.map((v, i) => v != null ? i : -1).filter(i => i >= 0).pop();
+    if (lastValid !== undefined) {
+      const lastX = lastValid * step;
+      ctx.lineTo(lastX, H);
+      ctx.lineTo(0, H);
+      ctx.closePath();
+      const grad = ctx.createLinearGradient(0, 0, 0, H);
+      grad.addColorStop(0, color + '44');
+      grad.addColorStop(1, color + '00');
+      ctx.fillStyle = grad;
+      ctx.fill();
+    }
+  }
+}
 
 // Sparkline with Y axis labels
 function drawSpark(canvasId, data, color, maxVal) {
@@ -507,6 +634,31 @@ function drawSpark2(canvasId, series) {
   });
 }
 
+// Per-core bar renderer - compact 2-row grid (5 per row max)
+function renderCoreBars(gridId, cores, color) {
+  const grid = el(gridId);
+  if (!grid) return;
+  if (!cores || cores.length === 0) { grid.innerHTML = ''; return; }
+  // Limit to 10 cores max, arrange in 2 rows of 5
+  const displayCores = cores.slice(0, 10);
+  const cols = Math.min(displayCores.length, 5);
+  const rows = Math.ceil(displayCores.length / cols);
+  let html = `<div style="display:grid;grid-template-columns:repeat(${cols},1fr);gap:4px;">`;
+  displayCores.forEach((v, i) => {
+    const pct = v != null ? Math.min(100, Math.max(0, v)) : 0;
+    const label = v != null ? Math.round(v) + '%' : '--';
+    html += `<div style="text-align:center;padding:3px 2px;background:#f7fafc;border-radius:4px;">
+      <div style="font-size:8px;color:#a0aec0;margin-bottom:2px;">${i}</div>
+      <div style="background:#edf2f7;border-radius:3px;height:18px;overflow:hidden;">
+        <div style="height:100%;width:${pct}%;background:${color};border-radius:3px;transition:width 0.3s;"></div>
+      </div>
+      <div style="font-size:9px;font-weight:700;color:#2d3748;margin-top:1px;font-variant-numeric:tabular-nums;">${label}</div>
+    </div>`;
+  });
+  html += '</div>';
+  grid.innerHTML = html;
+}
+
 function updateUI(data) {
   if (!data || !data.memory) { console.warn('no data yet'); return; }
   try {
@@ -525,28 +677,42 @@ function updateUI(data) {
   pt.className = 'pressure-badge ' + (mem.pressure || 'normal');
   ptText.textContent = (mem.pressure || '--').toUpperCase();
 
-  // CPU
-  // CPU + GPU (from power_info)
+  // CPU - use avg of per_core since cpu.percent from cpu_times can be stale
+  const cpuPerCore = cpu.per_core || [];
+  const cpuAvg = cpuPerCore.length > 0 ? cpuPerCore.reduce((a,b) => a+b, 0) / cpuPerCore.length : 0;
   const gpuPct = (pw && pw.gpu_usage_pct != null) ? pw.gpu_usage_pct : 0;
-  el('cpu-pct').innerHTML = round(cpu.percent, 0) + '<span class="big-unit">%</span>';
-  el('cpu-bar').style.width = Math.min(100, cpu.percent) + '%';
-  el('gpu-pct').innerHTML = gpuPct > 0 ? round(gpuPct, 0) + '<span class="big-unit">%</span>' : '--<span class="big-unit">%</span>';
-  el('gpu-bar').style.width = Math.min(100, gpuPct) + '%';
+  el('cpu-pct').innerHTML = round(cpuAvg, 0) + '<span class="big-unit">%</span>';
+  el('cpu-bar').style.width = Math.min(100, cpuAvg) + '%';
+  el('gpu-pct').innerHTML = gpuPct >= 0 ? round(gpuPct, 0) + '<span class="big-unit">%</span>' : '--<span class="big-unit">%</span>';
+  el('gpu-bar').style.width = Math.min(100, Math.max(0, gpuPct)) + '%';
 
-  // Power
-  const socPw = (pw && pw.all_power_w) || 0;
-  const sysPw = (pw && pw.sys_power_w) || 0;
-  const totalPw = socPw + sysPw;
-  el('pw-total').innerHTML = totalPw > 0 ? round(totalPw, 2) + '<span class="big-unit">W</span>' : '--<span class="big-unit">W</span>';
-  el('pw-total-disp').textContent = totalPw > 0 ? round(totalPw, 2) + 'W' : '--';
-  const maxPw = 15;
-  [['soc', socPw, '#ed8936'], ['sys', sysPw, '#9f7aea']].forEach(([k, v, c]) => {
-    const bar = el('pw-' + k + '-bar'), val = el('pw-' + k + '-val');
-    val.textContent = v > 0 ? round(v, 2) + 'W' : '--';
-    bar.style.width = Math.min(100, (v / maxPw) * 100) + '%';
-    bar.style.background = c;
-  });
-  el('pw-total-bar').style.width = Math.min(100, (totalPw / maxPw) * 100) + '%';
+  // Power - component breakdown
+  const pwRows = el('pw-rows');
+  if (!pwRows) {
+    el('pw-total').innerHTML = '--<span class="big-unit">W</span>';
+  } else {
+    const components = [
+      { key: 'cpu', label: 'CPU', val: (pw && pw.cpu_power_w) || 0, color: '#ed8936' },
+      { key: 'gpu', label: 'GPU', val: (pw && pw.gpu_power_w) || 0, color: '#9f7aea' },
+      { key: 'ram', label: 'RAM', val: (pw && pw.ram_power_w) || 0, color: '#38b2ac' },
+      { key: 'ane', label: 'ANE', val: (pw && pw.ane_power_w) || 0, color: '#48bb78' },
+      { key: 'sys', label: 'SYS', val: (pw && pw.sys_power_w) || 0, color: '#2d3748' },
+    ];
+    const validComps = components.filter(c => c.val > 0);
+    const totalSys = (pw && pw.sys_power_w) || 0;
+    el('pw-total').innerHTML = totalSys > 0 ? round(totalSys, 2) + '<span class="big-unit">W</span>' : '--<span class="big-unit">W</span>';
+    if (validComps.length === 0) {
+      pwRows.innerHTML = '<div style="font-size:11px;color:var(--text-muted);padding:8px 0;">No power data</div>';
+    } else {
+      const maxPw = Math.max(...validComps.map(c => c.val), 1) * 1.3;
+      pwRows.innerHTML = validComps.map(c => `
+        <div class="power-row">
+          <div class="power-label">${c.label}</div>
+          <div class="power-bar-bg"><div class="power-bar-fill" style="width:${Math.min(100, (c.val / maxPw) * 100)}%;background:${c.color};"></div></div>
+          <div class="power-val">${round(c.val, 2)}W</div>
+        </div>`).join('');
+    }
+  }
 
   // Temperature
   const cpuT = (pw && pw.cpu_temp_c) || 0;
@@ -556,10 +722,12 @@ function updateUI(data) {
   el('temp-cpu-bar').style.width = Math.min(100, cpuT) + '%';
   el('temp-gpu-bar').style.width = Math.min(100, gpuT) + '%';
 
-  // Disk
+  // Disk - compute used from percent to avoid inconsistent raw data
   const diskPct = disk.percent || 0;
+  const diskTotal = disk.total_gb || 0;
+  const diskUsed = diskPct > 0 ? Math.round(diskTotal * diskPct / 100 * 10) / 10 : 0;
   el('disk-pct').innerHTML = round(diskPct, 0) + '<span class="big-unit">%</span>';
-  el('disk-detail').textContent = round(disk.used_gb, 0) + ' / ' + round(disk.total_gb, 0) + ' GB';
+  el('disk-detail').textContent = diskUsed + ' / ' + round(diskTotal, 0) + ' GB';
   el('disk-bar').style.width = Math.min(100, diskPct) + '%';
   el('disk-read').textContent = disk.read_mb_s > 0.05 ? round(disk.read_mb_s, 1) : '--';
   el('disk-write').textContent = disk.write_mb_s > 0.05 ? round(disk.write_mb_s, 1) : '--';
@@ -572,7 +740,7 @@ function updateUI(data) {
   history.mem.push(mem.percent);
   history.cpu.push(cpu.percent);
   history.gpuUsage.push(pw && pw.gpu_usage_pct != null ? pw.gpu_usage_pct : null);
-  history.power.push(totalPw > 0 ? totalPw : null);
+  history.power.push((pw && pw.sys_power_w) || null);
   history.cpuTemp.push(cpuT > 0 ? cpuT : null);
   history.gpuTemp.push(gpuT > 0 ? gpuT : null);
   history.netDown.push(net.recv_mb_s > 0 ? net.recv_mb_s : 0);
@@ -604,13 +772,121 @@ async function fetchData() {
     if (r.ok) updateUI(await r.json());
   } catch(e) { console.warn('fetch error', e); }
 }
-let fetchTimer = null;
-function restartTimer() {
-  if (fetchTimer) clearInterval(fetchTimer);
-  fetchTimer = setInterval(fetchData, UPDATE_INTERVAL * 1000);
+
+// oMLX polling (only when tab is active)
+let omlxTimer = null;
+let omlxTabActive = false;
+async function fetchOmlx() {
+  try {
+    const r = await fetch('/oml');
+    if (!r.ok) return;
+    const d = await r.json();
+    // Models overview
+    el('oml-models-discovered').textContent = d.models_discovered || 0;
+    el('oml-models-loaded').textContent = d.models_loaded || 0;
+    const defModel = (d.default_model || '').split('/').pop();
+    el('oml-models-default').textContent = defModel || '--';
+    // Performance
+    el('oml-prefill-tps').textContent = d.avg_prefill_tps != null ? d.avg_prefill_tps : '--';
+    el('oml-gen-tps').textContent = d.avg_generation_tps != null ? d.avg_generation_tps : '--';
+    el('oml-cache-eff').textContent = d.cache_efficiency != null ? d.cache_efficiency + '%' : '--';
+    el('oml-requests').textContent = d.total_requests || 0;
+    // Memory
+    el('oml-mem-used').textContent = d.model_memory_used_formatted || '--';
+    el('oml-mem-max').textContent = d.model_memory_max_formatted || '--';
+    const memMax = d.model_memory_max || 1;
+    const memUsed = d.model_memory_used || 0;
+    const memPct = memMax > 0 ? Math.round(memUsed / memMax * 100) : 0;
+    el('oml-mem-pct').textContent = memPct + '%';
+    el('oml-mem-bar').style.width = Math.min(100, memPct) + '%';
+    // Tokens
+    const fmt = v => v >= 1000000 ? (v/1000000).toFixed(1)+'M' : v >= 1000 ? (v/1000).toFixed(1)+'K' : v;
+    el('oml-prompt-tok').textContent = fmt(d.total_prompt_tokens || 0);
+    el('oml-completion-tok').textContent = fmt(d.total_completion_tokens || 0);
+    // Tasks
+    el('oml-active-req').textContent = d.active_requests || 0;
+    el('oml-waiting-req').textContent = d.waiting_requests || 0;
+    fetchModels();
+  } catch(e) { console.warn('oml fetch error', e); }
 }
-restartTimer();
+async function fetchModels() {
+  try {
+    const r = await fetch('/oml/models');
+    if (!r.ok) return;
+    const resp = await r.json();
+    const models = resp.models || [];
+    const list = el('oml-models-list');
+    if (!Array.isArray(models)) return;
+    const fmtBytes = b => {
+      if (!b) return '--';
+      if (b >= 1e12) return (b/1e12).toFixed(1)+'TB';
+      if (b >= 1e9) return (b/1e9).toFixed(1)+'GB';
+      return (b/1e6).toFixed(0)+'MB';
+    };
+    list.innerHTML = models.map(m => {
+      const name = (m.id || '').split('/').pop();
+      const isLoading = m.is_loading;
+      const isLoaded = m.loaded;
+      const isError = !isLoaded && !isLoading;
+      const state = isLoading ? 'loading' : isLoaded ? 'loaded' : 'idle';
+      const stateColor = isLoaded ? '#48bb78' : isLoading ? '#ed8936' : isError ? '#fc8181' : '#a0aec0';
+      const memSize = fmtBytes(m.estimated_size) || '--';
+      return '<div style="padding:8px 10px;background:#f7fafc;border-radius:7px;border-left:3px solid ' + stateColor + ';">' +
+        '<div style="font-size:12px;font-weight:700;color:#2d3748;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="' + name + '">' + name + '</div>' +
+        '<div style="font-size:9px;color:#718096;margin-top:2px;">' + state + ' &middot; ' + memSize + '</div>' +
+        '</div>';
+    }).join('');
+  } catch(e) { console.warn('models fetch error', e); }
+}
+function startOmlxTimer() {
+  if (omlxTimer) clearInterval(omlxTimer);
+  omlxTimer = setInterval(fetchOmlx, UPDATE_INTERVAL * 1000);
+  fetchOmlx();
+}
+function stopOmlxTimer() {
+  if (omlxTimer) { clearInterval(omlxTimer); omlxTimer = null; }
+}
+
+// Tab switching for oMLX
+document.querySelectorAll('.tab').forEach(t => {
+  t.addEventListener('click', () => {
+    const isOmlx = t.dataset.tab === 'oml';
+    if (isOmlx && !omlxTabActive) {
+      omlxTabActive = true;
+      startOmlxTimer();
+    } else if (!isOmlx && omlxTabActive) {
+      omlxTabActive = false;
+      stopOmlxTimer();
+    }
+  });
+});
+let fetchTimer = null;
+let paused = false;
+function startTimer() {
+  if (fetchTimer) clearInterval(fetchTimer);
+  fetchTimer = setInterval(() => { if (!paused) fetchData(); }, UPDATE_INTERVAL * 1000);
+}
+function restartTimer() {
+  startTimer();
+  if (!paused) fetchData();
+}
+startTimer();
 fetchData();
+
+// Page Visibility API - pause all polling when hidden
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) {
+    paused = true;
+    if (fetchTimer) clearInterval(fetchTimer);
+    fetchTimer = null;
+    stopOmlxTimer();
+  } else {
+    paused = false;
+    startTimer();
+    fetchData();
+    if (omlxTabActive) startOmlxTimer();
+  }
+});
 
 // Interval slider
 const slider = el('int-slider');
@@ -618,7 +894,7 @@ slider.addEventListener('input', function() {
   const v = parseInt(this.value);
   UPDATE_INTERVAL = v;
   el('int-val').textContent = v + 's';
-  restartTimer();
+  startTimer();
   fetch('/api/interval?val=' + v).catch(() => {});
 });
 </script>
@@ -669,12 +945,21 @@ take_snapshot = None
 _macmon_start = None
 _macmon_stop = None
 
+# Request tracking for adaptive collection
+_last_request_time = time.time()
+_request_lock = threading.Lock()
+_collection_stale = True  # True = need to collect on next request
+
 class Handler(http.server.BaseHTTPRequestHandler):
     def log_message(self, fmt, *args):
         pass
 
     def do_GET(self):
-        global latest_data, take_snapshot
+        global latest_data, take_snapshot, _last_request_time, _request_lock
+
+        # Track request for adaptive collection
+        with _request_lock:
+            _last_request_time = time.time()
 
         if self.path == "/" or self.path == "/index.html":
             self.send_response(200)
@@ -708,6 +993,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                         "system": snap.cpu_system,
                         "idle": snap.cpu_idle,
                         "cores": snap.cpu_cores,
+                        "per_core": snap.cpu_per_core,
                     },
                     "power": {
                         "all_power_w": pi.get("all_power_w", 0) if pi else 0,
@@ -720,6 +1006,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                         "gpu_temp_c": pi.get("gpu_temp_c", 0) if pi else 0,
                         "cpu_usage_pct": pi.get("cpu_usage_pct", 0) if pi else 0,
                         "gpu_usage_pct": pi.get("gpu_usage_pct", 0) if pi else 0,
+                        "gpu_usage": pi.get("gpu_usage", []) if pi else [],
                         "source": pi.get("source", "") if pi else "",
                     },
                     "disk": {
@@ -739,6 +1026,42 @@ class Handler(http.server.BaseHTTPRequestHandler):
             self.send_header("Access-Control-Allow-Origin", "*")
             self.end_headers()
             self.wfile.write(json.dumps(data).encode())
+
+        elif self.path.startswith("/oml"):
+            # Proxy to oMLX API (avoids CORS)
+            try:
+                import urllib.request
+                req = urllib.request.Request(
+                    "http://localhost:8000/api/status",
+                    headers={"Authorization": "Bearer oMLX"}
+                )
+                with urllib.request.urlopen(req, timeout=3) as resp:
+                    self.send_response(resp.status)
+                    self.send_header("Content-Type", "application/json")
+                    self.send_header("Access-Control-Allow-Origin", "*")
+                    self.end_headers()
+                    self.wfile.write(resp.read())
+            except Exception as e:
+                self.send_error(502, str(e))
+            return
+
+        elif self.path.startswith("/oml/models"):
+            # Proxy to oMLX /v1/models/status
+            try:
+                import urllib.request
+                req = urllib.request.Request(
+                    "http://localhost:8000/v1/models/status",
+                    headers={"Authorization": "Bearer oMLX"}
+                )
+                with urllib.request.urlopen(req, timeout=5) as resp:
+                    self.send_response(resp.status)
+                    self.send_header("Content-Type", "application/json")
+                    self.send_header("Access-Control-Allow-Origin", "*")
+                    self.end_headers()
+                    self.wfile.write(resp.read())
+            except Exception as e:
+                self.send_error(502, str(e))
+            return
 
         elif self.path.startswith("/metrics"):
             _ts = take_snapshot
@@ -815,9 +1138,18 @@ def run(host="127.0.0.1", port=8001, interval=8.0):
         take_snapshot = _macmon_start = _macmon_stop = None
 
     def collector():
-        global latest_data
+        global latest_data, _last_request_time
+        idle_threshold = collector_interval[0] * 3  # sleep if no request for 3x interval
         while True:
             try:
+                # Check if there were recent requests
+                with _request_lock:
+                    idle = (time.time() - _last_request_time) > idle_threshold
+
+                if idle:
+                    time.sleep(collector_interval[0])
+                    continue
+
                 if take_snapshot:
                     snap = take_snapshot()
                     pi = snap.power_info
@@ -838,6 +1170,7 @@ def run(host="127.0.0.1", port=8001, interval=8.0):
                             "system": snap.cpu_system,
                             "idle": snap.cpu_idle,
                             "cores": snap.cpu_cores,
+                            "per_core": snap.cpu_per_core,
                         },
                         "power": pi,
                         "disk": {

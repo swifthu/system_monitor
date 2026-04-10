@@ -33,6 +33,7 @@ def make_mock_snapshot():
         swap_used_gb=0.5, swap_total_gb=2.0,
         cpu_percent=30.0, cpu_user=20.0, cpu_system=10.0,
         cpu_idle=70.0, cpu_cores=8,
+        cpu_per_core=[25.0, 30.0, 35.0, 28.0, 32.0, 22.0, 38.0, 29.0],
         power_info={
             'all_power_w': 10.5, 'cpu_power_w': 5.0, 'gpu_power_w': 3.0,
             'ane_power_w': 0.5, 'ram_power_w': 0.2, 'sys_power_w': 1.8,
