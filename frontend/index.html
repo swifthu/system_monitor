@@ -727,14 +727,16 @@ async function fetchBanwagon() {
     const r = await fetch('/api/banwagon');
     if (!r.ok) return;
     const d = await r.json();
-    const used = d.used_gb != null ? d.used_gb : '--';
-    const total = d.total_gb != null ? d.total_gb : '--';
-    const pct = d.pct != null ? Math.min(100, d.pct) : 0;
+    const used = d.used_gb != null ? Math.round(d.used_gb) : '--';
+    const total = d.total_gb != null ? Math.round(d.total_gb) : '--';
+    const pct = (d.used_gb != null && d.total_gb != null && d.total_gb > 0) ? Math.round((d.used_gb / d.total_gb) * 100) : 0;
     el('bw-used').textContent = used;
     el('bw-total').textContent = total;
     el('bw-ram').textContent = d.ram_gb != null ? d.ram_gb : '--';
     el('bw-disk').textContent = d.disk_gb != null ? d.disk_gb : '--';
-    el('bw-reset').textContent = d.reset_in || '--';
+    // data_next_reset is unix timestamp
+    const resetIn = d.data_next_reset ? Math.round((d.data_next_reset * 1000 - Date.now()) / 86400000) : '--';
+    el('bw-reset').textContent = typeof resetIn === 'number' ? resetIn + ' days' : resetIn;
     el('bw-location').textContent = d.location || '--';
     el('bw-ip').textContent = d.ip || '--';
     el('bw-os').textContent = d.os || '--';

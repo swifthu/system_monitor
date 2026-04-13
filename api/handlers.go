@@ -296,6 +296,24 @@ func (h *Handler) serveQuotaError(w http.ResponseWriter, msg string) {
 	json.NewEncoder(w).Encode(map[string]string{"error": msg})
 }
 
+func toFloat64(v interface{}) float64 {
+	if v == nil {
+		return 0
+	}
+	switch val := v.(type) {
+	case float64:
+		return val
+	case float32:
+		return float64(val)
+	case int:
+		return float64(val)
+	case int64:
+		return float64(val)
+	default:
+		return 0
+	}
+}
+
 func (h *Handler) handleBanwagon(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -335,18 +353,29 @@ func (h *Handler) handleBanwagon(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Return simplified response
+	// Return simplified response - transform to frontend format
+	totalBytes := toFloat64(data["plan_monthly_data"])
+	usedBytes := toFloat64(data["data_counter"])
+	ramBytes := toFloat64(data["plan_ram"])
+	diskBytes := toFloat64(data["plan_disk"])
+
+	// Extract IP address
+	ips := data["ip_addresses"].([]interface{})
+	ipAddr := ""
+	if len(ips) > 0 {
+		ipAddr = ips[0].(string)
+	}
+
 	result := map[string]interface{}{
-		"data": map[string]interface{}{
-			"status":      data["status"],
-			"plan_monthly_data": data["plan_monthly_data"],
-			"data_remaining": data["data_remaining"],
-			"ram":          data["ram"],
-			"disk":         data["disk"],
-			"ip_addr":      data["ip_addr"],
-			"os":           data["os"],
-			"node_ip":      data["node_ip"],
-		},
+		"status":           data["status"],
+		"total_gb":         totalBytes / 1024 / 1024 / 1024,
+		"used_gb":          usedBytes / 1024 / 1024 / 1024,
+		"ram_gb":           ramBytes / 1024 / 1024 / 1024,
+		"disk_gb":          diskBytes / 1024 / 1024 / 1024,
+		"ip":               ipAddr,
+		"os":               data["os"],
+		"location":         data["node_location"],
+		"data_next_reset":  data["data_next_reset"],
 	}
 
 	w.Header().Set("Content-Type", "application/json")
