@@ -142,6 +142,7 @@ def _get_cpu_usage_fallback() -> dict:
 
 _last_disk_io = None
 _last_net_io = None
+_net_io_lock = threading.Lock()
 _last_io_time = 0
 
 def get_disk_io() -> dict:
@@ -166,28 +167,57 @@ def get_disk_io() -> dict:
         return {"read_mb_s": 0, "write_mb_s": 0}
 
 
-def get_network_io() -> dict:
-    """获取网络 IO（上传/下载速度）"""
-    global _last_net_io, _last_io_time
+def _get_net_bytes() -> tuple:
+    """Use netstat -ib to get accurate byte counts on macOS (avoids psutil kernel counter caching).
+
+    Column indices (whitespace-split): parts[4]=Ipkts, parts[6]=Ibytes, parts[7]=Opkts, parts[9]=Obytes
+    """
     try:
-        import psutil, time
-        n = psutil.net_io_counters()
+        result = subprocess.check_output(["netstat", "-ib"], text=True, timeout=2)
+        total_recv = 0
+        total_sent = 0
+        for line in result.strip().split("\n"):
+            parts = line.split()
+            if len(parts) < 10:
+                continue
+            name = parts[0]
+            if name in ("lo0", "utun", "ap", "awdl", "bridge", "llw", "gif0", "stf0", "pktap0"):
+                continue
+            try:
+                # parts[6]=Ibytes, parts[9]=Obytes
+                total_recv += int(parts[6])
+                total_sent += int(parts[9])
+            except (ValueError, IndexError):
+                continue
+        return total_recv, total_sent
+    except Exception:
+        return None, None
+
+
+def get_network_io() -> dict:
+    """获取网络 IO（上传/下载速度），使用 netstat -ib 避免 macOS psutil 计数器缓存问题"""
+    global _last_net_io, _last_io_time
+
+    with _net_io_lock:
         now = time.time()
+        cur_recv, cur_sent = _get_net_bytes()
+        if cur_recv is None:
+            return {"recv_mb_s": 0, "sent_mb_s": 0}
+
         if _last_net_io is not None:
             dt = now - _last_io_time
-            if dt >= 0.05:  # 降低阈值到 50ms
-                recv_mb = (n.bytes_recv - _last_net_io.bytes_recv) / dt / (1024**2)
-                sent_mb = (n.bytes_sent - _last_net_io.bytes_sent) / dt / (1024**2)
-                _last_net_io = n
-                _last_io_time = now
-                return {"recv_mb_s": max(0, round(recv_mb, 2)), "sent_mb_s": max(0, round(sent_mb, 2))}
-            # dt太小，只更新时间戳，下次再计算
-            _last_io_time = now
-            return {"recv_mb_s": 0, "sent_mb_s": 0}
-        _last_net_io = n
+            if dt >= 0.05:
+                delta_recv = cur_recv - _last_net_io[0]
+                delta_sent = cur_sent - _last_net_io[1]
+                if delta_recv >= 0 and delta_sent >= 0:
+                    recv_mb = delta_recv / dt / (1024**2)
+                    sent_mb = delta_sent / dt / (1024**2)
+                    _last_net_io = (cur_recv, cur_sent)
+                    _last_io_time = now
+                    return {"recv_mb_s": round(recv_mb, 2), "sent_mb_s": round(sent_mb, 2)}
+
+        _last_net_io = (cur_recv, cur_sent)
         _last_io_time = now
-        return {"recv_mb_s": 0, "sent_mb_s": 0}
-    except Exception:
         return {"recv_mb_s": 0, "sent_mb_s": 0}
 
 

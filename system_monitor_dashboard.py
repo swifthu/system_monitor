@@ -10,6 +10,7 @@ import threading
 import time
 import os
 import sys
+import subprocess
 
 PORT = 8001
 API_INTERVAL = 8.0
@@ -46,6 +47,24 @@ HTML = """<!DOCTYPE html>
   .interval-ctrl { display: flex; align-items: center; gap: 10px; font-size: 12px; color: var(--text-muted); }
   .interval-ctrl label { font-weight: 600; }
   .interval-ctrl .val { font-weight: 700; color: var(--cpu); min-width: 28px; font-variant-numeric: tabular-nums; }
+
+  /* Live toggle */
+  .live-toggle {
+    display: flex; align-items: center; gap: 6px;
+    font-size: 12px; font-weight: 600; color: var(--text-muted);
+    cursor: pointer; user-select: none;
+  }
+  .live-toggle .toggle-track {
+    width: 32px; height: 16px; border-radius: 8px;
+    background: #48bb78; position: relative; transition: background 0.2s;
+  }
+  .live-toggle .toggle-track.off { background: #cbd5e0; }
+  .live-toggle .toggle-thumb {
+    position: absolute; top: 2px; left: 2px;
+    width: 12px; height: 12px; border-radius: 50%;
+    background: #fff; transition: left 0.2s;
+  }
+  .live-toggle .toggle-track.off .toggle-thumb { left: 18px; }
   input[type=range] { -webkit-appearance: none; appearance: none; height: 4px; border-radius: 4px; background: var(--border); outline: none; cursor: pointer; }
   input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 14px; height: 14px; border-radius: 50%; background: var(--cpu); cursor: pointer; box-shadow: 0 1px 4px rgba(66,153,225,0.4); }
   input[type=range]::-moz-range-thumb { width: 14px; height: 14px; border-radius: 50%; background: var(--cpu); cursor: pointer; border: none; box-shadow: 0 1px 4px rgba(66,153,225,0.4); }
@@ -158,11 +177,6 @@ HTML = """<!DOCTYPE html>
   <div style="display:flex;align-items:center;gap:16px;">
     <div id="fetch-error" style="display:none;font-size:11px;color:#fc8181;background:#fed7d7;padding:2px 8px;border-radius:10px;">⚠ 数据过期</div>
     <div class="timestamp" id="ts">--</div>
-    <div class="interval-ctrl">
-      <label>Interval</label>
-      <input type="range" id="int-slider" min="1" max="10" value="2" step="1">
-      <span class="val" id="int-val">2s</span>
-    </div>
   </div>
 </header>
 
@@ -298,6 +312,19 @@ HTML = """<!DOCTYPE html>
           <canvas class="spark-canvas" id="spark-net-up" width="320" height="70"></canvas>
         </div>
       </div>
+    </div>
+  </div>
+
+  <!-- System controls at bottom of tab -->
+  <div style="display:flex;align-items:center;justify-content:center;gap:16px;padding:12px 4px 4px;border-top:1px solid var(--border);margin-top:8px;">
+    <div class="live-toggle" id="live-toggle" onclick="toggleLive()">
+      <div class="toggle-track" id="toggle-track"><div class="toggle-thumb"></div></div>
+      <span id="toggle-label">LIVE</span>
+    </div>
+    <div class="interval-ctrl">
+      <label>Interval</label>
+      <input type="range" id="int-slider" min="1" max="10" value="2" step="1">
+      <span class="val" id="int-val">2s</span>
     </div>
   </div>
 </div>
@@ -506,13 +533,22 @@ HTML = """<!DOCTYPE html>
 <!-- QUOTA -->
 <div id="tab-api" class="tab-panel">
   <div class="grid" style="grid-template-columns:1fr 1fr;">
-    <!-- MiniMax QUOTA card -->
+    <!-- RESET Card -->
     <div class="card" style="border-left:3px solid #667eea;">
-      <div class="card-title" style="color:#667eea;">MiniMax QUOTA</div>
-      <div id="mm-models-list" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:6px;"></div>
-      <div style="display:flex;gap:16px;margin-top:8px;font-size:9px;color:#a0aec0;">
-        <span>5H: <span id="mm-reset-5h" style="color:#667eea;font-weight:600;">--</span></span>
-        <span>Week: <span id="mm-remain" style="color:#667eea;font-weight:600;">--</span></span>
+      <div class="card-title" style="color:#667eea;">RESET Countdown</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;">
+        <div style="text-align:center;">
+          <div style="font-size:28px;font-weight:800;color:#667eea;font-variant-numeric:tabular-nums;" id="mm-reset-5h">--</div>
+          <div style="font-size:10px;color:var(--text-muted);margin-top:4px;">5H Reset</div>
+        </div>
+        <div style="text-align:center;">
+          <div style="font-size:28px;font-weight:800;color:#667eea;font-variant-numeric:tabular-nums;" id="mm-reset-1d">--</div>
+          <div style="font-size:10px;color:var(--text-muted);margin-top:4px;">1D Reset</div>
+        </div>
+        <div style="text-align:center;">
+          <div style="font-size:28px;font-weight:800;color:#667eea;font-variant-numeric:tabular-nums;" id="mm-reset-week">--</div>
+          <div style="font-size:10px;color:var(--text-muted);margin-top:4px;">Week Reset</div>
+        </div>
       </div>
     </div>
 
@@ -544,6 +580,14 @@ HTML = """<!DOCTYPE html>
       </div>
     </div>
   </div>
+
+  <!-- MiniMax Models Grid -->
+  <div class="grid" style="margin-top:0;">
+    <div class="card full" style="border-left:3px solid #667eea;">
+      <div class="card-title" style="color:#667eea;margin-bottom:12px;">MiniMax Models</div>
+      <div id="mm-models-list" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px;"></div>
+    </div>
+  </div>
 </div>
 
 <footer>Auto-refresh <span id="footer-interval">2</span>s &nbsp;·&nbsp; Source: macmon &nbsp;·&nbsp; <span class="live-dot"></span>Live</footer>
@@ -557,6 +601,7 @@ let history = { mem: [], cpu: [], gpuUsage: [], power: [], cpuTemp: [], gpuTemp:
 
 function el(id) { return document.getElementById(id); }
 function round(v, d) { if (v == null || isNaN(v)) return '--'; return Number(v).toFixed(d != null ? d : 1); }
+function escapeHtml(s) { if (s == null) return ''; return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 
 // Tab switching
 document.querySelectorAll('.tab').forEach(t => {
@@ -933,38 +978,54 @@ async function fetchMiniMax() {
     const r = await fetch('/api/minimax');
     if (!r.ok) return;
     const d = await r.json();
-    // 5H window reset time remaining
+
+    // Update reset countdown cards
     el('mm-reset-5h').textContent = d.reset_5h || '--';
-    // Weekly time remain
-    el('mm-remain').textContent = d.time_remain || '--';
+    el('mm-reset-1d').textContent = d.reset_1d || '--';
+    el('mm-reset-week').textContent = d.time_remain || '--';
+
     // Models list — hide models with no quota at all
     const list = el('mm-models-list');
     if (!list) return;
     const models = (d.models || []).filter(m => m.total_5h > 0 || m.total_week > 0);
     if (models.length === 0) {
-      list.innerHTML = '<div style="color:#a0aec0;font-size:11px;">No active quota</div>';
+      list.innerHTML = '<div style="color:#a0aec0;font-size:12px;padding:16px;">No active quota</div>';
       return;
     }
+
     list.innerHTML = models.map(m => {
       const pct5h = m.total_5h > 0 ? Math.round((m.remain_5h / m.total_5h) * 100) : 0;
       const pctW = m.total_week > 0 ? Math.round((m.remain_week / m.total_week) * 100) : 0;
       const color5h = pct5h > 50 ? '#48bb78' : pct5h > 20 ? '#ed8936' : '#fc8181';
       const colorW = pctW > 50 ? '#48bb78' : pctW > 20 ? '#ed8936' : '#fc8181';
-      const bar5h = m.total_5h > 0 ? `<div class="bar-bg" style="height:2px;margin-top:3px;"><div class="bar-fill" style="width:${pct5h}%;background:${color5h};border-radius:2px;"></div></div>` : '';
-      const barW = m.total_week > 0 ? `<div class="bar-bg" style="height:2px;margin-top:3px;"><div class="bar-fill" style="width:${pctW}%;background:${colorW};border-radius:2px;"></div></div>` : '';
-      const modelName = m.name || '--';
-      return `<div style="background:#f7fafc;border-radius:6px;padding:6px 8px;border-left:3px solid #667eea;">
-        <div style="font-size:10px;font-weight:700;color:#2d3748;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${modelName}">${modelName}</div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-top:3px;">
+      const modelName = escapeHtml(m.name) || '--';
+
+      const intervalLabel = m.interval_label || '5H';
+      const resetLabel = m.reset_label || '--';
+
+      return `<div style="background:#f7fafc;border-radius:8px;padding:12px 14px;border-left:3px solid #667eea;">
+        <div style="font-size:14px;font-weight:700;color:#2d3748;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:6px;" title="${modelName}">${modelName}</div>
+        <div style="font-size:9px;color:#a0aec0;margin-bottom:10px;">Resets in ${resetLabel}</div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+          <!-- ${intervalLabel} Row -->
           <div>
-            <div style="font-size:8px;color:#a0aec0;">5H</div>
-            <div style="font-size:11px;font-weight:700;color:#2d3748;">${m.remain_5h}</div>
-            ${bar5h}
+            <div style="font-size:10px;color:#a0aec0;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">${intervalLabel}</div>
+            <div style="display:flex;align-items:baseline;gap:6px;">
+              <span style="font-size:20px;font-weight:800;color:#2d3748;">${m.remain_5h}</span>
+              <span style="font-size:11px;color:#a0aec0;">/ ${m.total_5h}</span>
+            </div>
+            <div class="bar-bg" style="height:4px;margin-top:6px;"><div class="bar-fill" style="width:${pct5h}%;background:${color5h};border-radius:2px;"></div></div>
           </div>
+
+          <!-- Week Row -->
           <div>
-            <div style="font-size:8px;color:#a0aec0;">Week</div>
-            <div style="font-size:11px;font-weight:700;color:#2d3748;">${m.remain_week}</div>
-            ${barW}
+            <div style="font-size:10px;color:#a0aec0;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">Week</div>
+            <div style="display:flex;align-items:baseline;gap:6px;">
+              <span style="font-size:20px;font-weight:800;color:#2d3748;">${m.remain_week}</span>
+              <span style="font-size:11px;color:#a0aec0;">/ ${m.total_week}</span>
+            </div>
+            <div class="bar-bg" style="height:4px;margin-top:6px;"><div class="bar-fill" style="width:${pctW}%;background:${colorW};border-radius:2px;"></div></div>
           </div>
         </div>
       </div>`;
@@ -1154,9 +1215,9 @@ function restartTimer() {
 }
 startTimer();
 pollSystemAndOmlx();
-// Start OpenClaw independent timer (10s fixed)
-startOpenClawTimer();
-fetchOpenClaw(); // immediate first fetch
+// OpenClaw DISABLED - causes power overhead
+// startOpenClawTimer();
+// fetchOpenClaw(); // disabled
 // Start MiniMax independent timer (10s fixed)
 startMiniMaxTimer();
 Promise.allSettled([fetchMiniMax(), fetchBanwagon()]); // immediate first fetch
@@ -1167,15 +1228,32 @@ document.addEventListener('visibilitychange', () => {
     paused = true;
     if (fetchTimer) clearInterval(fetchTimer);
     fetchTimer = null;
-    if (ocPollTimer) { clearInterval(ocPollTimer); ocPollTimer = null; }
     if (mmPollTimer) { clearInterval(mmPollTimer); mmPollTimer = null; }
   } else {
-    paused = false;
-    startTimer();
-    startOpenClawTimer();
-    startMiniMaxTimer();
+    if (!paused) {
+      startTimer();
+      startMiniMaxTimer();
+    }
   }
 });
+
+// Live toggle - pause/resume SYSTEM polling
+let isLive = true;
+function toggleLive() {
+  isLive = !isLive;
+  paused = !isLive;
+  const track = el('toggle-track');
+  const label = el('toggle-label');
+  if (isLive) {
+    track.classList.remove('off');
+    label.textContent = 'LIVE';
+    startTimer();
+  } else {
+    track.classList.add('off');
+    label.textContent = 'PAUSED';
+    if (fetchTimer) { clearInterval(fetchTimer); fetchTimer = null; }
+  }
+}
 
 // Interval slider
 const slider = el('int-slider');
@@ -1204,28 +1282,53 @@ _http_last_io_time = 0
 _http_net_lock = threading.Lock()
 
 
+def _http_get_net_bytes() -> tuple:
+    """Use netstat -ib for accurate macOS network byte counts."""
+    try:
+        result = subprocess.check_output(["netstat", "-ib"], text=True, timeout=2)
+        total_recv = 0
+        total_sent = 0
+        for line in result.strip().split("\n"):
+            parts = line.split()
+            if len(parts) < 10:
+                continue
+            name = parts[0]
+            if name in ("lo0", "utun", "ap", "awdl", "bridge", "llw", "gif0", "stf0", "pktap0"):
+                continue
+            try:
+                total_recv += int(parts[6])
+                total_sent += int(parts[9])
+            except (ValueError, IndexError):
+                continue
+        return total_recv, total_sent
+    except Exception:
+        return None, None
+
+
 def get_http_network_io() -> dict:
-    """HTTP handler 专用的网络 IO 计算（线程安全）"""
+    """HTTP handler 专用的网络 IO 计算（线程安全，使用 netstat）"""
     global _http_last_net_io, _http_last_io_time
-    import psutil
     import time
 
-    n = psutil.net_io_counters()
-    now = time.time()
-
     with _http_net_lock:
+        now = time.time()
+        cur_recv, cur_sent = _http_get_net_bytes()
+        if cur_recv is None:
+            return {"recv_mb_s": 0, "sent_mb_s": 0}
+
         if _http_last_net_io is not None:
             dt = now - _http_last_io_time
             if dt >= 0.1:
-                recv_mb = (n.bytes_recv - _http_last_net_io.bytes_recv) / dt / (1024**2)
-                sent_mb = (n.bytes_sent - _http_last_net_io.bytes_sent) / dt / (1024**2)
-                _http_last_net_io = n
-                _http_last_io_time = now
-                return {"recv_mb_s": max(0, round(recv_mb, 2)), "sent_mb_s": max(0, round(sent_mb, 2))}
-            # dt 太小，不计算但更新时间戳
-            _http_last_io_time = now
-            return {"recv_mb_s": 0, "sent_mb_s": 0}
-        _http_last_net_io = n
+                delta_recv = cur_recv - _http_last_net_io[0]
+                delta_sent = cur_sent - _http_last_net_io[1]
+                if delta_recv >= 0 and delta_sent >= 0:
+                    recv_mb = delta_recv / dt / (1024**2)
+                    sent_mb = delta_sent / dt / (1024**2)
+                    _http_last_net_io = (cur_recv, cur_sent)
+                    _http_last_io_time = now
+                    return {"recv_mb_s": round(recv_mb, 2), "sent_mb_s": round(sent_mb, 2)}
+
+        _http_last_net_io = (cur_recv, cur_sent)
         _http_last_io_time = now
         return {"recv_mb_s": 0, "sent_mb_s": 0}
 
@@ -1461,6 +1564,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     # Build per-model list
                     models_out = []
                     main_model = None
+                    daily_model = None  # First model with 1D interval
                     for m in (data.get("model_remains") or []):
                         name = m.get("model_name") or "--"
                         total_5h = m.get("current_interval_total_count", 0)
@@ -1469,17 +1573,46 @@ class Handler(http.server.BaseHTTPRequestHandler):
                         total_week = m.get("current_weekly_total_count", 0)
                         used_week = m.get("current_weekly_usage_count", 0)
                         remain_week = max(0, total_week - used_week)
+
+                        # Determine interval label: 5H or 1D based on window length
+                        start_ts = m.get("start_time", 0)
+                        end_ts = m.get("end_time", 0)
+                        interval_ms = end_ts - start_ts
+                        interval_label = "1D" if interval_ms >= 82800000 else "5H"  # >= 23h = 1D
+
+                        # Per-model reset countdown
+                        if end_ts > 0:
+                            end_dt = datetime.fromtimestamp(end_ts / 1000)
+                            now = datetime.now()
+                            diff_sec = (end_dt - now).total_seconds()
+                            if diff_sec > 0:
+                                if diff_sec >= 3600:
+                                    reset_label = f"{diff_sec/3600:.1f}h"
+                                elif diff_sec >= 60:
+                                    reset_label = f"{diff_sec/60:.0f}m"
+                                else:
+                                    reset_label = f"{diff_sec:.0f}s"
+                            else:
+                                reset_label = "now"
+                        else:
+                            reset_label = "--"
+
                         models_out.append({
                             "name": name,
                             "remain_5h": remain_5h,
                             "total_5h": total_5h,
                             "remain_week": remain_week,
                             "total_week": total_week,
+                            "interval_label": interval_label,
+                            "reset_label": reset_label,
                         })
                         if "MiniMax-M" in name and main_model is None:
                             main_model = m
+                        if interval_label == "1D" and daily_model is None:
+                            daily_model = m
 
                     mm = main_model or (data.get("model_remains") or [{}])[0]
+                    dm = daily_model or mm
 
                     # 5 Hour quota
                     total_5h = mm.get("current_interval_total_count", 0)
@@ -1487,7 +1620,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     remain_5h = max(0, total_5h - used_5h)
                     quota_5hour = str(remain_5h) if total_5h > 0 else "--"
 
-                    # 5H window reset time (remaining time until reset) — shared by all models
+                    # 5H window reset time
                     end_ts = mm.get("end_time", 0)
                     if end_ts > 0:
                         end_dt = datetime.fromtimestamp(end_ts / 1000)
@@ -1504,6 +1637,24 @@ class Handler(http.server.BaseHTTPRequestHandler):
                             reset_5h = "now"
                     else:
                         reset_5h = "--"
+
+                    # 1D reset time (from first daily-interval model)
+                    end_ts_d = dm.get("end_time", 0)
+                    if end_ts_d > 0:
+                        end_dt_d = datetime.fromtimestamp(end_ts_d / 1000)
+                        now = datetime.now()
+                        diff_sec_d = (end_dt_d - now).total_seconds()
+                        if diff_sec_d > 0:
+                            if diff_sec_d >= 3600:
+                                reset_1d = f"{diff_sec_d/3600:.1f}h"
+                            elif diff_sec_d >= 60:
+                                reset_1d = f"{diff_sec_d/60:.0f}m"
+                            else:
+                                reset_1d = f"{diff_sec_d:.0f}s"
+                        else:
+                            reset_1d = "now"
+                    else:
+                        reset_1d = "--"
 
                     # Week quota
                     total_week = mm.get("current_weekly_total_count", 0)
@@ -1529,7 +1680,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
                         "quota_week": quota_week,
                         "time_remain": time_remain,
                         "reset_5h": reset_5h,
-                        "models": [{"reset_5h": reset_5h, **m} for m in models_out],
+                        "reset_1d": reset_1d,
+                        "models": models_out,
                     }
                     body = _json.dumps(out).encode()
                 self.send_response(200)

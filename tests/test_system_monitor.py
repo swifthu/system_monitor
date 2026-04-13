@@ -589,9 +589,11 @@ class TestFormatSnapshot:
 class TestMacmonProcess:
     """测试 macmon 进程启动/停止"""
 
+    @patch('system_monitor.select.select')
+    @patch('system_monitor.os.O_NONBLOCK', 0)
+    @patch('system_monitor.fcntl.fcntl')
     @patch('system_monitor.subprocess.Popen')
-    @patch('select.select')
-    def test_macmon_start_success(self, mock_select, mock_popen):
+    def test_macmon_start_success(self, mock_popen, mock_fcntl, mock_os_nonblock, mock_select):
         """macmon 启动成功"""
         import system_monitor
         system_monitor._macmon_proc = None  # 重置
@@ -599,6 +601,7 @@ class TestMacmonProcess:
         mock_proc = MagicMock()
         mock_proc.stdout = MagicMock()
         mock_proc.stdout.readline.return_value = '{"all_power": 10.0}\n'
+        mock_proc.stdout.fileno.return_value = 99
         mock_popen.return_value = mock_proc
         mock_select.return_value = ([mock_proc.stdout], [], [])
 
@@ -619,9 +622,11 @@ class TestMacmonProcess:
         assert result is False
         assert system_monitor._macmon_proc is None
 
+    @patch('system_monitor.select.select')
+    @patch('system_monitor.os.O_NONBLOCK', 0)
+    @patch('system_monitor.fcntl.fcntl')
     @patch('system_monitor.subprocess.Popen')
-    @patch('select.select')
-    def test_macmon_stop(self, mock_select, mock_popen):
+    def test_macmon_stop(self, mock_popen, mock_fcntl, mock_os_nonblock, mock_select):
         """macmon 停止"""
         import system_monitor
 
@@ -636,9 +641,12 @@ class TestMacmonProcess:
 
         assert system_monitor._macmon_proc is None
 
+    @patch('system_monitor.os.read')
+    @patch('system_monitor.select.select')
+    @patch('system_monitor.os.O_NONBLOCK', 0)
+    @patch('system_monitor.fcntl.fcntl')
     @patch('system_monitor.subprocess.Popen')
-    @patch('select.select')
-    def test_macmon_read_success(self, mock_select, mock_popen):
+    def test_macmon_read_success(self, mock_popen, mock_fcntl, mock_os_nonblock, mock_select, mock_os_read):
         """macmon 读取成功"""
         import system_monitor
         system_monitor._macmon_proc = None
@@ -646,9 +654,10 @@ class TestMacmonProcess:
 
         mock_proc = MagicMock()
         mock_proc.stdout = MagicMock()
-        mock_proc.stdout.readline.return_value = '{"all_power": 10.0, "cpu_power": 5.0, "gpu_power": 3.0, "ane_power": 0.5, "ram_power": 0.2, "sys_power": 1.3, "temp": {"cpu_temp_avg": 60.0, "gpu_temp_avg": 55.0}, "cpu_usage_pct": 0.5, "gpu_usage": [0, 0.3]}'
+        mock_proc.stdout.fileno.return_value = 99
         mock_popen.return_value = mock_proc
         mock_select.return_value = ([mock_proc.stdout], [], [])
+        mock_os_read.return_value = b'{"all_power": 10.0, "cpu_power": 5.0, "gpu_power": 3.0, "ane_power": 0.5, "ram_power": 0.2, "sys_power": 1.3, "temp": {"cpu_temp_avg": 60.0, "gpu_temp_avg": 55.0}, "cpu_usage_pct": 0.5, "gpu_usage": [0, 0.3]}\n'
 
         system_monitor._macmon_start()
         result = system_monitor._macmon_read()
@@ -657,9 +666,12 @@ class TestMacmonProcess:
         assert result['all_power_w'] == 10.0
         assert result['source'] == 'macmon'
 
+    @patch('system_monitor.os.read')
+    @patch('system_monitor.select.select')
+    @patch('system_monitor.os.O_NONBLOCK', 0)
+    @patch('system_monitor.fcntl.fcntl')
     @patch('system_monitor.subprocess.Popen')
-    @patch('select.select')
-    def test_macmon_read_empty_line(self, mock_select, mock_popen):
+    def test_macmon_read_empty_line(self, mock_popen, mock_fcntl, mock_os_nonblock, mock_select, mock_os_read):
         """macmon 读取到空行（进程退出）"""
         import system_monitor
         system_monitor._macmon_proc = None
@@ -667,9 +679,11 @@ class TestMacmonProcess:
 
         mock_proc = MagicMock()
         mock_proc.stdout = MagicMock()
+        mock_proc.stdout.fileno.return_value = 99
         mock_proc.stdout.readline.return_value = ""  # 空行表示退出
         mock_popen.return_value = mock_proc
         mock_select.return_value = ([mock_proc.stdout], [], [])
+        mock_os_read.return_value = b''  # EOF
 
         system_monitor._macmon_start()
         result = system_monitor._macmon_read()
