@@ -41,8 +41,8 @@ macOS 系统监控工具，同时支持 **oMLX** 模型运行状态和 **OpenCla
 ### QUOTA Tab
 | 监控项 | 说明 |
 |--------|------|
-| MiniMax QUOTA | 各模型 5H / Week 配额剩余量及进度条 |
-| MiniMax Reset | 5H 窗口剩余时间、周配额重置倒计时 |
+| Reset Countdown | 5H / 1D / Week 三个配额窗口重置倒计时（大字体卡片） |
+| MiniMax Models | 各模型 5H / Week 配额剩余量，实时进度条 + 重置时间标签 |
 | BANWAGON | 月流量使用量 / 配额、RAM / Disk 配置、IP / OS 信息、重置倒计时 |
 
 > BANWAGON 配置位于 `config.json`（不提交到 git）
@@ -84,17 +84,20 @@ python system_monitor_dashboard.py --host 0.0.0.0 --port 8001
 
 ## 自适应节电
 
-- **页面隐藏时**：自动停止所有轮询，节省浏览器资源
+- **Live Toggle**：顶部工具栏可暂停/恢复 SYSTEM + oMLX 轮询，节省浏览器资源
+- **页面隐藏时**：自动停止所有轮询
 - **无请求时**：后端 collector 在 5 分钟无请求后进入空闲状态，跳过数据采集
-- **Tab 级独立刷新**：SYSTEM + oMLX 共享 slider 控制的轮询间隔；OPENCLAW 独立 10s 固定刷新（OpenClaw CLI 命令较慢 ~5-10s）
+- **Interval 控制**：slider 控制 SYSTEM + oMLX 轮询间隔（1~10s）
+- **OpenClaw 已禁用**：OpenClaw CLI 命令(~5-10s)会导致电源开销，默认关闭
 
 ## 架构说明
 
-- **并发处理**：使用 `ThreadingTCPServer`，每个 HTTP 请求独立线程处理，OpenClaw 的 4 个并发 CLI 请求可真正并行执行
+- **并发处理**：使用 `ThreadingTCPServer`，每个 HTTP 请求独立线程处理
 - **后端**：Python 3.12，psutil（系统数据）+ macmon（GPU/功率数据）
+- **网络 IO**：使用 `netstat -ib` 替代 psutil 避免 macOS 内核计数器缓存问题
 - **前端**：原生 HTML/CSS/JS，无框架依赖，Canvas 绘制 sparkline
 - **oMLX 集成**：Python 代理端点转发 HTTP 请求，绕过 CORS 限制
-- **OpenClaw 集成**：调用 `openclaw gateway call` 和 `openclaw agents/sessions` CLI 命令获取数据
+- **OpenClaw 集成**：默认禁用（CLI 命令导致电源开销）
 
 ## 平台
 
