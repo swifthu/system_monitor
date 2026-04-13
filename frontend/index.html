@@ -1,0 +1,868 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>System Monitor</title>
+<style>
+  :root {
+    --bg: #f0f4f8; --card-bg: #ffffff; --text: #2d3748;
+    --text-muted: #718096; --border: #e2e8f0;
+    --shadow: 0 2px 12px rgba(0,0,0,0.06); --radius: 14px;
+    --mem: #38b2ac; --cpu: #4299e1; --power: #ed8936;
+    --temp: #f56565; --disk: #9f7aea; --gpu: #9f7aea; --net: #48bb78;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+    background: var(--bg); color: var(--text);
+    min-height: 100vh; padding: 18px 22px 28px;
+  }
+  header {
+    display: flex; align-items: center; justify-content: space-between;
+    max-width: 1200px; margin: 0 auto 16px;
+  }
+  header h1 { font-size: 20px; font-weight: 700; letter-spacing: -0.3px; }
+  header h1 span { color: var(--text-muted); font-weight: 400; font-size: 13px; }
+  .timestamp { font-size: 12px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+  .interval-ctrl { display: flex; align-items: center; gap: 10px; font-size: 12px; color: var(--text-muted); }
+  .interval-ctrl label { font-weight: 600; }
+  .interval-ctrl .val { font-weight: 700; color: var(--cpu); min-width: 28px; font-variant-numeric: tabular-nums; }
+
+  /* Live toggle */
+  .live-toggle {
+    display: flex; align-items: center; gap: 6px;
+    font-size: 12px; font-weight: 600; color: var(--text-muted);
+    cursor: pointer; user-select: none;
+  }
+  .live-toggle .toggle-track {
+    width: 32px; height: 16px; border-radius: 8px;
+    background: #48bb78; position: relative; transition: background 0.2s;
+  }
+  .live-toggle .toggle-track.off { background: #cbd5e0; }
+  .live-toggle .toggle-thumb {
+    position: absolute; top: 2px; left: 2px;
+    width: 12px; height: 12px; border-radius: 50%;
+    background: #fff; transition: left 0.2s;
+  }
+  .live-toggle .toggle-track.off .toggle-thumb { left: 18px; }
+  input[type=range] { -webkit-appearance: none; appearance: none; height: 4px; border-radius: 4px; background: var(--border); outline: none; cursor: pointer; }
+  input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 14px; height: 14px; border-radius: 50%; background: var(--cpu); cursor: pointer; box-shadow: 0 1px 4px rgba(66,153,225,0.4); }
+  input[type=range]::-moz-range-thumb { width: 14px; height: 14px; border-radius: 50%; background: var(--cpu); cursor: pointer; border: none; box-shadow: 0 1px 4px rgba(66,153,225,0.4); }
+
+  /* Tabs */
+  .tabs {
+    display: flex; gap: 4px; max-width: 1200px; margin: 0 auto 14px;
+    border-bottom: 2px solid var(--border);
+  }
+  .tab {
+    padding: 8px 22px; font-size: 13px; font-weight: 600;
+    color: var(--text-muted); cursor: pointer;
+    border-radius: 8px 8px 0 0;
+    border: 2px solid transparent; border-bottom: none;
+    transition: all 0.15s; letter-spacing: 0.3px;
+  }
+  .tab:hover { background: #ebf8ff; color: var(--cpu); }
+  .tab.active {
+    color: var(--cpu); border-color: var(--border); border-bottom-color: var(--card-bg);
+    background: var(--card-bg); margin-bottom: -2px;
+  }
+  .tab-panel { display: none; }
+  .tab-panel.active { display: block; }
+
+  /* Grid */
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+    gap: 14px; max-width: 1200px; margin: 0 auto 14px;
+  }
+  .card {
+    background: var(--card-bg); border-radius: var(--radius);
+    padding: 18px 20px; box-shadow: var(--shadow); border: 1px solid var(--border);
+  }
+  .card-title {
+    font-size: 10px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase;
+    color: var(--text-muted); margin-bottom: 12px;
+  }
+  .card.mem { border-left: 3px solid var(--mem); }
+  .card.mem .card-title { color: var(--mem); }
+  .card.cpu { border-left: 3px solid var(--cpu); }
+  .card.cpu .card-title { color: var(--cpu); }
+  .card.power { border-left: 3px solid var(--power); }
+  .card.power .card-title { color: var(--power); }
+  .card.temp { border-left: 3px solid var(--temp); }
+  .card.temp .card-title { color: var(--temp); }
+  .card.disk { border-left: 3px solid var(--disk); }
+  .card.disk .card-title { color: var(--disk); }
+  .card.gpu { border-left: 3px solid var(--gpu); }
+  .card.gpu .card-title { color: var(--gpu); }
+  .card.net { border-left: 3px solid var(--net); }
+  .card.net .card-title { color: var(--net); }
+
+  .big-val { font-size: 36px; font-weight: 800; font-variant-numeric: tabular-nums; line-height: 1; margin-bottom: 3px; }
+  .big-unit { font-size: 14px; font-weight: 400; color: var(--text-muted); margin-left: 3px; }
+  .sub-text { font-size: 12px; color: var(--text-muted); margin-bottom: 10px; }
+
+  .bar-bg { background: var(--bg); border-radius: 6px; height: 5px; margin-bottom: 10px; overflow: hidden; }
+  .bar-fill { height: 100%; border-radius: 6px; transition: width 0.5s ease; }
+  .bar-fill.mem { background: var(--mem); }
+  .bar-fill.cpu { background: var(--cpu); }
+  .bar-fill.gpu { background: var(--power); }
+  .bar-fill.disk { background: var(--disk); }
+  .bar-fill.temp { background: var(--temp); }
+
+  .detail-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
+  .detail-item { background: var(--bg); border-radius: 7px; padding: 7px 9px; }
+  .detail-label { font-size: 9px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; }
+  .detail-value { font-size: 15px; font-weight: 700; font-variant-numeric: tabular-nums; margin-top: 2px; }
+
+  .pressure-badge { display: inline-flex; align-items: center; gap: 5px; padding: 3px 10px; border-radius: 20px; font-size: 11px; font-weight: 700; }
+  .pressure-badge.normal { background: #c6f6d5; color: #276749; }
+  .pressure-badge.warning { background: #feebc8; color: #c05621; }
+  .pressure-badge.critical { background: #fed7d7; color: #c53030; }
+  .pressure-dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+
+  .power-row { display: flex; align-items: center; gap: 8px; margin-bottom: 5px; }
+  .power-label { font-size: 10px; color: var(--text-muted); width: 38px; }
+  .power-bar-bg { flex: 1; background: var(--bg); border-radius: 4px; height: 5px; }
+  .power-bar-fill { height: 100%; border-radius: 4px; transition: width 0.5s; }
+  .power-val { font-size: 11px; font-weight: 700; width: 50px; text-align: right; font-variant-numeric: tabular-nums; }
+
+  .io-grid { display: flex; gap: 10px; }
+  .io-item { flex: 1; text-align: center; }
+
+  .full { grid-column: 1 / -1; }
+
+  /* Sparklines */
+  .spark-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px 20px; }
+  .spark-item { }
+  .spark-title { font-size: 9px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; }
+  .spark-canvas { display: block; }
+
+  /* Placeholders */
+  .placeholder {
+    display: flex; align-items: center; justify-content: center;
+    min-height: 200px; color: var(--text-muted); font-size: 14px;
+    background: var(--card-bg); border-radius: var(--radius);
+    border: 1px dashed var(--border);
+  }
+
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+  .live-dot { display:inline-block; width:6px; height:6px; border-radius:50%; background:#48bb78; animation:pulse 2s infinite; margin-right:3px; }
+
+  footer { text-align: center; font-size: 11px; color: var(--text-muted); margin-top: 14px; max-width: 1200px; margin-left: auto; margin-right: auto; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>System Monitor <span>/ Jimmy's Mac mini</span></h1>
+  <div style="display:flex;align-items:center;gap:16px;">
+    <div id="fetch-error" style="display:none;font-size:11px;color:#fc8181;background:#fed7d7;padding:2px 8px;border-radius:10px;">⚠ 数据过期</div>
+    <div class="timestamp" id="ts">--</div>
+  </div>
+</header>
+
+<!-- Tabs -->
+<div class="tabs">
+  <div class="tab active" data-tab="system">SYSTEM</div>
+  <div class="tab" data-tab="oml">oMLX</div>
+  <div class="tab" data-tab="api">QUOTA</div>
+</div>
+
+<!-- SYSTEM -->
+<div id="tab-system" class="tab-panel active">
+  <div class="grid">
+    <!-- CPU -->
+    <div class="card cpu">
+      <div class="card-title">CPU</div>
+      <div class="big-val" id="cpu-pct">--<span class="big-unit">%</span></div>
+      <div class="bar-bg"><div class="bar-fill cpu" id="cpu-bar" style="width:0%"></div></div>
+    </div>
+
+    <!-- Memory -->
+    <div class="card mem">
+      <div class="card-title">Memory</div>
+      <div class="big-val" id="mem-pct">--<span class="big-unit">%</span></div>
+      <div class="sub-text" id="mem-detail">-- / -- GB</div>
+      <div class="bar-bg"><div class="bar-fill mem" id="mem-bar" style="width:0%"></div></div>
+    </div>
+
+    <!-- Power -->
+    <div class="card power">
+      <div class="card-title">Power</div>
+      <div class="big-val" id="pw-total">--<span class="big-unit">W</span></div>
+      <div class="sub-text" id="pw-sub" style="display:none;"></div>
+      <div id="pw-rows"></div>
+    </div>
+
+    <!-- Temperature -->
+    <div class="card temp">
+      <div class="card-title">Temperature</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+        <div style="text-align:center;">
+          <div style="font-size:28px;font-weight:800;font-variant-numeric:tabular-nums;" id="temp-cpu">--<span style="font-size:13px;font-weight:400;color:var(--text-muted)">°C</span></div>
+          <div style="font-size:10px;color:var(--text-muted);margin-top:4px;">CPU</div>
+          <div class="bar-bg" style="margin-top:6px;"><div class="bar-fill temp" id="temp-cpu-bar" style="width:0%"></div></div>
+        </div>
+        <div style="text-align:center;">
+          <div style="font-size:28px;font-weight:800;font-variant-numeric:tabular-nums;" id="temp-gpu">--<span style="font-size:13px;font-weight:400;color:var(--text-muted)">°C</span></div>
+          <div style="font-size:10px;color:var(--text-muted);margin-top:4px;">GPU</div>
+          <div class="bar-bg" style="margin-top:6px;"><div class="bar-fill temp" id="temp-gpu-bar" style="width:0%"></div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Disk -->
+    <div class="card disk">
+      <div class="card-title">Disk</div>
+      <div class="big-val" id="disk-pct">--<span class="big-unit">%</span></div>
+      <div class="sub-text" id="disk-detail">-- / -- GB</div>
+      <div class="bar-bg"><div class="bar-fill disk" id="disk-bar" style="width:0%"></div></div>
+    </div>
+
+    <!-- Network -->
+    <div class="card net">
+      <div class="card-title">Network</div>
+      <div class="io-grid">
+        <div class="io-item">
+          <div style="font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">Download</div>
+          <div style="font-size:24px;font-weight:800;font-variant-numeric:tabular-nums;" id="net-down">--</div>
+          <div class="detail-label">MB/s</div>
+        </div>
+        <div class="io-item">
+          <div style="font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">Upload</div>
+          <div style="font-size:24px;font-weight:800;font-variant-numeric:tabular-nums;" id="net-up">--</div>
+          <div class="detail-label">MB/s</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- History -->
+  <div class="grid">
+    <div class="card full">
+      <div class="card-title" style="margin-bottom:10px;">History <span class="live-dot"></span>Live</div>
+      <div class="spark-row">
+        <div class="spark-item">
+          <div class="spark-title">Memory %</div>
+          <canvas class="spark-canvas" id="spark-mem" width="320" height="70"></canvas>
+        </div>
+        <div class="spark-item">
+          <div class="spark-title">CPU %</div>
+          <canvas class="spark-canvas" id="spark-cpu" width="320" height="70"></canvas>
+        </div>
+        <div class="spark-item">
+          <div class="spark-title">Power W</div>
+          <canvas class="spark-canvas" id="spark-pw" width="320" height="70"></canvas>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- System controls at bottom of tab -->
+  <div style="display:flex;align-items:center;justify-content:center;gap:16px;padding:12px 4px 4px;border-top:1px solid var(--border);margin-top:8px;">
+    <div class="live-toggle" id="live-toggle" onclick="toggleLive()">
+      <div class="toggle-track" id="toggle-track"><div class="toggle-thumb"></div></div>
+      <span id="toggle-label">LIVE</span>
+    </div>
+    <div class="interval-ctrl">
+      <label>Interval</label>
+      <input type="range" id="int-slider" min="1" max="10" value="2" step="1">
+      <span class="val" id="int-val">2s</span>
+    </div>
+  </div>
+</div>
+
+<!-- oMLX -->
+<div id="tab-oml" class="tab-panel">
+  <div class="grid">
+    <div class="card" style="border-left:3px solid #9f7aea;">
+      <div class="card-title" style="color:#9f7aea;">Status</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+        <div style="text-align:center;padding:8px 4px;background:#f7fafc;border-radius:8px;">
+          <div style="font-size:22px;font-weight:800;color:#2d3748;" id="oml-models-discovered">--</div>
+          <div style="font-size:9px;color:#a0aec0;text-transform:uppercase;letter-spacing:0.5px;">Discovered</div>
+        </div>
+        <div style="text-align:center;padding:8px 4px;background:#f7fafc;border-radius:8px;">
+          <div style="font-size:22px;font-weight:800;color:#48bb78;" id="oml-models-loaded">--</div>
+          <div style="font-size:9px;color:#a0aec0;text-transform:uppercase;letter-spacing:0.5px;">Loaded</div>
+        </div>
+      </div>
+      <div style="text-align:center;padding:8px 4px;background:#f7fafc;border-radius:8px;margin-top:8px;">
+        <div style="font-size:14px;font-weight:700;color:#4299e1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" id="oml-models-default">--</div>
+        <div style="font-size:9px;color:#a0aec0;text-transform:uppercase;letter-spacing:0.5px;">Default</div>
+      </div>
+    </div>
+
+    <div class="card" style="border-left:3px solid #ed8936;">
+      <div class="card-title" style="color:#ed8936;">Performance</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+        <div style="text-align:center;padding:6px 4px;background:#f7fafc;border-radius:7px;">
+          <div style="font-size:18px;font-weight:800;color:#2d3748;" id="oml-prefill-tps">--</div>
+          <div style="font-size:8px;color:#a0aec0;">Prefill tok/s</div>
+        </div>
+        <div style="text-align:center;padding:6px 4px;background:#f7fafc;border-radius:7px;">
+          <div style="font-size:18px;font-weight:800;color:#2d3748;" id="oml-gen-tps">--</div>
+          <div style="font-size:8px;color:#a0aec0;">Gen tok/s</div>
+        </div>
+        <div style="text-align:center;padding:6px 4px;background:#f7fafc;border-radius:7px;">
+          <div style="font-size:18px;font-weight:800;color:#2d3748;" id="oml-cache-eff">--</div>
+          <div style="font-size:8px;color:#a0aec0;">Cache %</div>
+        </div>
+        <div style="text-align:center;padding:6px 4px;background:#f7fafc;border-radius:7px;">
+          <div style="font-size:18px;font-weight:800;color:#2d3748;" id="oml-requests">--</div>
+          <div style="font-size:8px;color:#a0aec0;">Requests</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card" style="border-left:3px solid #38b2ac;">
+      <div class="card-title" style="color:#38b2ac;">Memory</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+        <div style="text-align:center;padding:6px 4px;background:#f7fafc;border-radius:7px;">
+          <div style="font-size:18px;font-weight:800;color:#2d3748;" id="oml-mem-used">--</div>
+          <div style="font-size:8px;color:#a0aec0;">Used</div>
+        </div>
+        <div style="text-align:center;padding:6px 4px;background:#f7fafc;border-radius:7px;">
+          <div style="font-size:18px;font-weight:800;color:#2d3748;" id="oml-mem-max">--</div>
+          <div style="font-size:8px;color:#a0aec0;">Max</div>
+        </div>
+      </div>
+      <div style="margin-top:8px;">
+        <div style="display:flex;justify-content:space-between;font-size:10px;color:#718096;margin-bottom:3px;">
+          <span>Memory</span><span id="oml-mem-pct">--%</span>
+        </div>
+        <div class="bar-bg"><div class="bar-fill" id="oml-mem-bar" style="width:0%;background:#38b2ac;"></div></div>
+      </div>
+    </div>
+
+    <div class="card" style="border-left:3px solid #718096;">
+      <div class="card-title" style="color:#718096;">TOKENS &amp; TASK</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+        <div style="text-align:center;padding:6px 4px;background:#f7fafc;border-radius:7px;">
+          <div style="font-size:18px;font-weight:800;color:#2d3748;" id="oml-prompt-tok">--</div>
+          <div style="font-size:8px;color:#a0aec0;">Prompt</div>
+        </div>
+        <div style="text-align:center;padding:6px 4px;background:#f7fafc;border-radius:7px;">
+          <div style="font-size:18px;font-weight:800;color:#2d3748;" id="oml-completion-tok">--</div>
+          <div style="font-size:8px;color:#a0aec0;">Completion</div>
+        </div>
+        <div style="text-align:center;padding:6px 4px;background:#f7fafc;border-radius:7px;">
+          <div style="font-size:18px;font-weight:800;color:#2d3748;" id="oml-active-req">--</div>
+          <div style="font-size:8px;color:#a0aec0;">Active</div>
+        </div>
+        <div style="text-align:center;padding:6px 4px;background:#f7fafc;border-radius:7px;">
+          <div style="font-size:18px;font-weight:800;color:#2d3748;" id="oml-waiting-req">--</div>
+          <div style="font-size:8px;color:#a0aec0;">Waiting</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Model List -->
+  <div class="grid">
+    <div class="card full" style="border-left:3px solid #9f7aea;">
+      <div class="card-title" style="margin-bottom:10px;color:#9f7aea;">Models</div>
+      <div id="oml-models-list" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:8px;"></div>
+    </div>
+  </div>
+</div>
+
+<!-- QUOTA -->
+<div id="tab-api" class="tab-panel">
+  <div class="grid" style="grid-template-columns:1fr 1fr;">
+    <!-- RESET Card -->
+    <div class="card" style="border-left:3px solid #667eea;">
+      <div class="card-title" style="color:#667eea;">RESET Countdown</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;">
+        <div style="text-align:center;">
+          <div style="font-size:28px;font-weight:800;color:#667eea;font-variant-numeric:tabular-nums;" id="mm-reset-5h">--</div>
+          <div style="font-size:10px;color:var(--text-muted);margin-top:4px;">5H Reset</div>
+        </div>
+        <div style="text-align:center;">
+          <div style="font-size:28px;font-weight:800;color:#667eea;font-variant-numeric:tabular-nums;" id="mm-reset-1d">--</div>
+          <div style="font-size:10px;color:var(--text-muted);margin-top:4px;">1D Reset</div>
+        </div>
+        <div style="text-align:center;">
+          <div style="font-size:28px;font-weight:800;color:#667eea;font-variant-numeric:tabular-nums;" id="mm-reset-week">--</div>
+          <div style="font-size:10px;color:var(--text-muted);margin-top:4px;">Week Reset</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- BANWAGON card -->
+    <div class="card" style="border-left:3px solid #e53e3e;">
+      <div class="card-title" style="color:#e53e3e;">BANWAGON · <span id="bw-location">--</span></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:6px;">
+        <div style="text-align:center;padding:8px 4px;background:#f7fafc;border-radius:8px;">
+          <div style="font-size:16px;font-weight:800;color:#2d3748;" id="bw-used">--</div>
+          <div style="font-size:8px;color:#a0aec0;margin-top:2px;">of <span id="bw-total">--</span> GB</div>
+          <div class="bar-bg" style="margin-top:4px;height:2px;"><div class="bar-fill" id="bw-bar" style="width:0%;background:#e53e3e;"></div></div>
+        </div>
+        <div style="text-align:center;padding:8px 4px;background:#f7fafc;border-radius:8px;">
+          <div style="font-size:16px;font-weight:800;color:#2d3748;" id="bw-ram">--</div>
+          <div style="font-size:8px;color:#a0aec0;margin-top:2px;">RAM GB</div>
+        </div>
+        <div style="text-align:center;padding:8px 4px;background:#f7fafc;border-radius:8px;">
+          <div style="font-size:16px;font-weight:800;color:#2d3748;" id="bw-disk">--</div>
+          <div style="font-size:8px;color:#a0aec0;margin-top:2px;">Disk GB</div>
+        </div>
+        <div style="text-align:center;padding:8px 4px;background:#f7fafc;border-radius:8px;">
+          <div style="font-size:16px;font-weight:800;color:#e53e3e;" id="bw-reset">--</div>
+          <div style="font-size:8px;color:#a0aec0;margin-top:2px;">Reset d</div>
+        </div>
+      </div>
+      <div style="display:flex;gap:12px;margin-top:6px;font-size:9px;color:#a0aec0;">
+        <span>IP: <span id="bw-ip" style="color:#2d3748;font-weight:600;">--</span></span>
+        <span>OS: <span id="bw-os" style="color:#2d3748;font-weight:600;">--</span></span>
+      </div>
+    </div>
+  </div>
+
+  <!-- MiniMax Models Grid -->
+  <div class="grid" style="margin-top:0;">
+    <div class="card full" style="border-left:3px solid #667eea;">
+      <div class="card-title" style="color:#667eea;margin-bottom:12px;">MiniMax Models</div>
+      <div id="mm-models-list" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px;"></div>
+    </div>
+  </div>
+</div>
+
+<footer>Auto-refresh <span id="footer-interval">2</span>s &nbsp;·&nbsp; Source: Go Backend &nbsp;·&nbsp; <span class="live-dot"></span>Live</footer>
+
+<script>
+const API = '/api/snapshot';
+const MAX_HIST = 60;
+let UPDATE_INTERVAL = 2;
+
+let history = { mem: [], cpu: [], power: [] };
+
+function el(id) { return document.getElementById(id); }
+function round(v, d) { if (v == null || isNaN(v)) return '--'; return Number(v).toFixed(d != null ? d : 1); }
+function escapeHtml(s) { if (s == null) return ''; return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+// Tab switching
+document.querySelectorAll('.tab').forEach(t => {
+  t.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
+    document.querySelectorAll('.tab-panel').forEach(x => x.classList.remove('active'));
+    t.classList.add('active');
+    document.getElementById('tab-' + t.dataset.tab).classList.add('active');
+  });
+});
+
+// Sparkline with Y axis labels
+function drawSpark(canvasId, data, color, maxVal) {
+  const canvas = el(canvasId);
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width, H = canvas.height;
+  ctx.clearRect(0, 0, W, H);
+  if (!data || data.length < 2) return;
+
+  const AXIS_LEFT = 30, AXIS_BOTTOM = 14, PAD_TOP = 4;
+  const plotW = W - AXIS_LEFT - 4, plotH = H - AXIS_BOTTOM - PAD_TOP;
+
+  const valid = data.filter(v => v != null);
+  const m = maxVal || (valid.length ? Math.max(...valid, 0.01) * 1.25 : 1);
+  const step = plotW / (data.length - 1);
+
+  // Y axis grid + labels
+  ctx.font = '8px system-ui, sans-serif';
+  ctx.textAlign = 'right';
+  for (let g = 0; g <= 3; g++) {
+    const yFrac = g / 3;
+    const yPx = PAD_TOP + yFrac * plotH;
+    const val = m * (1 - yFrac);
+    ctx.strokeStyle = '#edf2f7';
+    ctx.lineWidth = 0.5;
+    ctx.beginPath(); ctx.moveTo(AXIS_LEFT, yPx); ctx.lineTo(W - 2, yPx); ctx.stroke();
+    ctx.fillStyle = '#a0aec0';
+    ctx.fillText(Number(val).toFixed(maxVal ? 0 : 1), AXIS_LEFT - 3, yPx + 3);
+  }
+
+  ctx.strokeStyle = '#e2e8f0';
+  ctx.lineWidth = 0.5;
+  ctx.beginPath(); ctx.moveTo(AXIS_LEFT, PAD_TOP); ctx.lineTo(AXIS_LEFT, PAD_TOP + plotH); ctx.stroke();
+
+  // Gradient fill
+  const grad = ctx.createLinearGradient(0, PAD_TOP, 0, PAD_TOP + plotH);
+  grad.addColorStop(0, color + '55'); grad.addColorStop(1, color + '00');
+
+  const pts = [];
+  let started = false;
+  data.forEach((v, i) => {
+    if (v == null) { started = false; return; }
+    const x = AXIS_LEFT + i * step;
+    const y = PAD_TOP + plotH - (Math.max(0, v) / m) * plotH;
+    pts.push([x, y]);
+    if (!started) { ctx.beginPath(); ctx.moveTo(x, y); started = true; }
+    else ctx.lineTo(x, y);
+  });
+
+  if (pts.length > 0) {
+    ctx.lineTo(pts[pts.length - 1][0], PAD_TOP + plotH);
+    ctx.lineTo(pts[0][0], PAD_TOP + plotH);
+    ctx.closePath();
+    ctx.fillStyle = grad; ctx.fill();
+    ctx.beginPath(); started = false;
+    pts.forEach(([x, y]) => { if (!started) { ctx.moveTo(x, y); started = true; } else ctx.lineTo(x, y); });
+    ctx.strokeStyle = color; ctx.lineWidth = 1.5; ctx.stroke();
+  }
+
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#a0aec0';
+  [0, Math.floor(data.length / 2), data.length - 1].forEach(i => {
+    if (i >= 0 && i < data.length) {
+      const x = AXIS_LEFT + i * step;
+      const age = (data.length - 1 - i) * UPDATE_INTERVAL;
+      ctx.fillText('-' + age + 's', x, H - 2);
+    }
+  });
+}
+
+// Per-core bar renderer
+function renderCoreBars(cores) {
+  const grid = el('cpu-cores');
+  if (!grid || !cores || cores.length === 0) {
+    if (grid) grid.innerHTML = '';
+    return;
+  }
+  const displayCores = cores.slice(0, 10);
+  const cols = Math.min(displayCores.length, 5);
+  let html = `<div style="display:grid;grid-template-columns:repeat(${cols},1fr);gap:4px;margin-top:8px;">`;
+  displayCores.forEach((c, i) => {
+    const pct = c.total_percent != null ? Math.min(100, Math.max(0, c.total_percent)) : 0;
+    const label = c.total_percent != null ? Math.round(c.total_percent) + '%' : '--';
+    html += `<div style="text-align:center;padding:3px 2px;background:#f7fafc;border-radius:4px;">
+      <div style="font-size:8px;color:#a0aec0;margin-bottom:2px;">${i}</div>
+      <div style="background:#edf2f7;border-radius:3px;height:18px;overflow:hidden;">
+        <div style="height:100%;width:${pct}%;background:#4299e1;border-radius:3px;transition:width 0.3s;"></div>
+      </div>
+      <div style="font-size:9px;font-weight:700;color:#2d3748;margin-top:1px;font-variant-numeric:tabular-nums;">${label}</div>
+    </div>`;
+  });
+  html += '</div>';
+  grid.innerHTML = html;
+}
+
+function updateUI(data) {
+  if (!data) { console.warn('no data yet'); return; }
+  try {
+    const mem = data.memory, cpu = data.cpu, pw = data.power;
+    const disk = data.disk, net = data.network;
+
+    const ts = data.timestamp ? new Date(data.timestamp * 1000) : new Date();
+    el('ts').textContent = ts.toLocaleString('zh-CN', {hour12: false}) + ' (刷新中)';
+
+    // Memory
+    const memPct = mem.used_percent || 0;
+    const memTotal = mem.total || 1;
+    const memUsed = mem.used || 0;
+    const memTotalGB = memTotal / (1024*1024*1024);
+    const memUsedGB = memUsed / (1024*1024*1024);
+    el('mem-pct').innerHTML = round(memPct, 0) + '<span class="big-unit">%</span>';
+    el('mem-detail').textContent = round(memUsedGB, 1) + ' / ' + round(memTotalGB, 1) + ' GB';
+    el('mem-bar').style.width = Math.min(100, memPct) + '%';
+
+    // CPU
+    const cpuAvg = cpu && cpu.length > 0 ? cpu[0].total_percent || 0 : 0;
+    el('cpu-pct').innerHTML = round(cpuAvg, 0) + '<span class="big-unit">%</span>';
+    el('cpu-bar').style.width = Math.min(100, cpuAvg) + '%';
+
+
+    // Power - show breakdown from macmon
+    const cpuPw = (pw && pw.cpu_power_w) || 0;
+    const gpuPw = (pw && pw.gpu_power_w) || 0;
+    const ramPw = (pw && pw.ram_power_w) || 0;
+    const sysPw = (pw && pw.sys_power_w) || 0;
+    const allPw = (pw && pw.percent) || 0;
+    el('pw-total').innerHTML = round(sysPw, 2) + '<span class="big-unit">W</span>';
+    const pwRows = el('pw-rows');
+    if (allPw > 0) {
+      const maxPw = Math.max(cpuPw, gpuPw, ramPw, sysPw, 1);
+      const items = [
+        {label:'CPU', val:cpuPw, color:'#ed8936'},
+        {label:'GPU', val:gpuPw, color:'#9f7aea'},
+        {label:'RAM', val:ramPw, color:'#38b2ac'},
+        {label:'SYS', val:sysPw, color:'#2d3748'},
+      ].filter(x => x.val > 0);
+      pwRows.innerHTML = items.map(c => `
+        <div style="display:flex;align-items:center;gap:6px;font-size:10px;margin-bottom:3px;">
+          <span style="width:24px;color:var(--text-muted);">${c.label}</span>
+          <div style="flex:1;background:#edf2f7;border-radius:3px;height:4px;overflow:hidden;">
+            <div style="height:100%;width:${Math.min(100,(c.val/maxPw)*100)}%;background:${c.color};border-radius:3px;"></div>
+          </div>
+          <span style="width:40px;text-align:right;font-weight:600;">${round(c.val,1)}W</span>
+        </div>`).join('');
+    } else {
+      pwRows.innerHTML = '<div style="font-size:11px;color:var(--text-muted);">No power data</div>';
+    }
+
+    // Temperature
+    const cpuTemp = (pw && pw.cpu_temp) || 0;
+    const gpuTemp = (pw && pw.gpu_temp) || 0;
+    if (cpuTemp > 0) {
+      el('temp-cpu').innerHTML = round(cpuTemp, 0) + '<span style="font-size:13px;font-weight:400;color:var(--text-muted)">°C</span>';
+      el('temp-cpu-bar').style.width = Math.min(100, cpuTemp) + '%';
+    }
+    if (gpuTemp > 0) {
+      el('temp-gpu').innerHTML = round(gpuTemp, 0) + '<span style="font-size:13px;font-weight:400;color:var(--text-muted)">°C</span>';
+      el('temp-gpu-bar').style.width = Math.min(100, gpuTemp) + '%';
+    }
+
+    // Disk
+    const diskPct = (disk && disk.length > 0) ? (disk[0].used_percent || 0) : 0;
+    const diskTotal = (disk && disk.length > 0) ? disk[0].total || 0 : 0;
+    const diskUsed = (disk && disk.length > 0) ? disk[0].used || 0 : 0;
+    const diskTotalGB = diskTotal / (1024*1024*1024);
+    const diskUsedGB = diskUsed / (1024*1024*1024);
+    el('disk-pct').innerHTML = round(diskPct, 0) + '<span class="big-unit">%</span>';
+    el('disk-detail').textContent = round(diskUsedGB, 1) + ' / ' + round(diskTotalGB, 0) + ' GB';
+    el('disk-bar').style.width = Math.min(100, diskPct) + '%';
+
+    // Network - find primary interface (en0 or similar) and show rate
+    let netDown = '--', netUp = '--';
+    if (net && net.length > 0) {
+      // Find en0 or first real interface with traffic
+      const primary = net.find(n => n.interface === 'en0' || (n.rx_rate > 0 && !n.interface.startsWith('utun')));
+      if (primary) {
+        netDown = (primary.rx_rate || 0).toFixed(2);
+        netUp = (primary.tx_rate || 0).toFixed(2);
+      }
+    }
+    el('net-down').textContent = netDown;
+    el('net-up').textContent = netUp;
+
+    // History
+    history.mem.push(memPct);
+    history.cpu.push(cpuAvg);
+    history.power.push(allPw > 0 ? allPw : null);
+    [history.mem, history.cpu, history.power].forEach(arr => {
+      if (arr.length > MAX_HIST) arr.shift();
+    });
+
+    drawSpark('spark-mem', history.mem, '#38b2ac', 100);
+    drawSpark('spark-cpu', history.cpu, '#4299e1', 100);
+    const vp = history.power.filter(v => v != null);
+    const mp = vp.length ? Math.max(...vp, 2) : 2;
+    drawSpark('spark-pw', history.power, '#ed8936', mp * 1.3);
+  } catch(e) { console.error('updateUI error:', e); }
+}
+
+async function fetchData() {
+  try {
+    const r = await fetch(API + '?t=' + Date.now());
+    if (r.ok) {
+      updateUI(await r.json());
+      el('fetch-error').style.display = 'none';
+    } else {
+      el('fetch-error').style.display = 'inline-block';
+    }
+  } catch(e) { el('fetch-error').style.display = 'inline-block'; console.warn('fetch error', e); }
+}
+
+// MiniMax API polling — independent 10s fixed interval
+let mmPollTimer = null;
+function startMiniMaxTimer() {
+  if (mmPollTimer) clearInterval(mmPollTimer);
+  mmPollTimer = setInterval(() => Promise.allSettled([fetchMiniMax(), fetchBanwagon()]), 10000);
+}
+async function fetchMiniMax() {
+  try {
+    const r = await fetch('/api/quota');
+    if (!r.ok) return;
+    const d = await r.json();
+
+    el('mm-reset-5h').textContent = d.reset_5h || '--';
+    el('mm-reset-1d').textContent = d.reset_1d || '--';
+    el('mm-reset-week').textContent = d.time_remain || '--';
+
+    const list = el('mm-models-list');
+    if (!list) return;
+    const models = (d.models || []).filter(m => m.total_5h > 0 || m.total_week > 0);
+    if (models.length === 0) {
+      list.innerHTML = '<div style="color:#a0aec0;font-size:12px;padding:16px;">No active quota</div>';
+      return;
+    }
+
+    list.innerHTML = models.map(m => {
+      const pct5h = m.total_5h > 0 ? Math.round((m.remain_5h / m.total_5h) * 100) : 0;
+      const pctW = m.total_week > 0 ? Math.round((m.remain_week / m.total_week) * 100) : 0;
+      const color5h = pct5h > 50 ? '#48bb78' : pct5h > 20 ? '#ed8936' : '#fc8181';
+      const colorW = pctW > 50 ? '#48bb78' : pctW > 20 ? '#ed8936' : '#fc8181';
+      const modelName = escapeHtml(m.name) || '--';
+      const intervalLabel = m.interval_label || '5H';
+      const resetLabel = m.reset_label || '--';
+
+      return `<div style="background:#f7fafc;border-radius:8px;padding:12px 14px;border-left:3px solid #667eea;">
+        <div style="font-size:14px;font-weight:700;color:#2d3748;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:6px;" title="${modelName}">${modelName}</div>
+        <div style="font-size:9px;color:#a0aec0;margin-bottom:10px;">Resets in ${resetLabel}</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+          <div>
+            <div style="font-size:10px;color:#a0aec0;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">${intervalLabel}</div>
+            <div style="display:flex;align-items:baseline;gap:6px;">
+              <span style="font-size:20px;font-weight:800;color:#2d3748;">${m.remain_5h}</span>
+              <span style="font-size:11px;color:#a0aec0;">/ ${m.total_5h}</span>
+            </div>
+            <div class="bar-bg" style="height:4px;margin-top:6px;"><div class="bar-fill" style="width:${pct5h}%;background:${color5h};border-radius:2px;"></div></div>
+          </div>
+          <div>
+            <div style="font-size:10px;color:#a0aec0;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">Week</div>
+            <div style="display:flex;align-items:baseline;gap:6px;">
+              <span style="font-size:20px;font-weight:800;color:#2d3748;">${m.remain_week}</span>
+              <span style="font-size:11px;color:#a0aec0;">/ ${m.total_week}</span>
+            </div>
+            <div class="bar-bg" style="height:4px;margin-top:6px;"><div class="bar-fill" style="width:${pctW}%;background:${colorW};border-radius:2px;"></div></div>
+          </div>
+        </div>
+      </div>`;
+    }).join('');
+  } catch(e) { console.warn('minimax fetch error', e); }
+}
+
+async function fetchBanwagon() {
+  try {
+    const r = await fetch('/api/banwagon');
+    if (!r.ok) return;
+    const d = await r.json();
+    const used = d.used_gb != null ? d.used_gb : '--';
+    const total = d.total_gb != null ? d.total_gb : '--';
+    const pct = d.pct != null ? Math.min(100, d.pct) : 0;
+    el('bw-used').textContent = used;
+    el('bw-total').textContent = total;
+    el('bw-ram').textContent = d.ram_gb != null ? d.ram_gb : '--';
+    el('bw-disk').textContent = d.disk_gb != null ? d.disk_gb : '--';
+    el('bw-reset').textContent = d.reset_in || '--';
+    el('bw-location').textContent = d.location || '--';
+    el('bw-ip').textContent = d.ip || '--';
+    el('bw-os').textContent = d.os || '--';
+    const barColor = pct > 90 ? '#fc8181' : pct > 70 ? '#ed8936' : '#48bb78';
+    const bar = el('bw-bar');
+    bar.style.width = pct + '%';
+    bar.style.background = barColor;
+  } catch(e) { console.warn('banwagon fetch error', e); }
+}
+
+// oMLX fetch
+async function fetchOmlx() {
+  try {
+    const r = await fetch('/api/oml');
+    if (!r.ok) return;
+    const d = await r.json();
+    el('oml-models-discovered').textContent = d.models_discovered || 0;
+    el('oml-models-loaded').textContent = d.models_loaded || 0;
+    const defModel = (d.default_model || '').split('/').pop();
+    el('oml-models-default').textContent = defModel || '--';
+    el('oml-prefill-tps').textContent = d.avg_prefill_tps != null ? d.avg_prefill_tps : '--';
+    el('oml-gen-tps').textContent = d.avg_generation_tps != null ? d.avg_generation_tps : '--';
+    el('oml-cache-eff').textContent = d.cache_efficiency != null ? d.cache_efficiency + '%' : '--';
+    el('oml-requests').textContent = d.total_requests || 0;
+    el('oml-mem-used').textContent = d.model_memory_used_formatted || '--';
+    el('oml-mem-max').textContent = d.model_memory_max_formatted || '--';
+    const memMax = d.model_memory_max || 1;
+    const memUsed = d.model_memory_used || 0;
+    const memPct = memMax > 0 ? Math.round(memUsed / memMax * 100) : 0;
+    el('oml-mem-pct').textContent = memPct + '%';
+    el('oml-mem-bar').style.width = Math.min(100, memPct) + '%';
+    const fmt = v => v >= 1000000 ? (v/1000000).toFixed(1)+'M' : v >= 1000 ? (v/1000).toFixed(1)+'K' : v;
+    el('oml-prompt-tok').textContent = fmt(d.total_prompt_tokens || 0);
+    el('oml-completion-tok').textContent = fmt(d.total_completion_tokens || 0);
+    el('oml-active-req').textContent = d.active_requests || 0;
+    el('oml-waiting-req').textContent = d.waiting_requests || 0;
+    await fetchModels();
+  } catch(e) { console.warn('oml fetch error', e); }
+}
+async function fetchModels() {
+  try {
+    const r = await fetch('/api/oml/models');
+    if (!r.ok) return;
+    const resp = await r.json();
+    const models = resp.models || [];
+    const list = el('oml-models-list');
+    if (!Array.isArray(models)) return;
+    const fmtBytes = b => {
+      if (!b) return '--';
+      if (b >= 1e12) return (b/1e12).toFixed(1)+'TB';
+      if (b >= 1e9) return (b/1e9).toFixed(1)+'GB';
+      return (b/1e6).toFixed(0)+'MB';
+    };
+    list.innerHTML = models.map(m => {
+      const name = (m.id || '').split('/').pop();
+      const isLoading = m.is_loading;
+      const isLoaded = m.loaded;
+      const isError = !isLoaded && !isLoading;
+      const state = isLoading ? 'loading' : isLoaded ? 'loaded' : 'idle';
+      const stateColor = isLoaded ? '#48bb78' : isLoading ? '#ed8936' : isError ? '#fc8181' : '#a0aec0';
+      const memSize = fmtBytes(m.estimated_size) || '--';
+      return '<div style="padding:8px 10px;background:#f7fafc;border-radius:7px;border-left:3px solid ' + stateColor + ';">' +
+        '<div style="font-size:12px;font-weight:700;color:#2d3748;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="' + name + '">' + name + '</div>' +
+        '<div style="font-size:9px;color:#718096;margin-top:2px;">' + state + ' &middot; ' + memSize + '</div>' +
+        '</div>';
+    }).join('');
+  } catch(e) { console.warn('models fetch error', e); }
+}
+
+// Global polling timer
+let fetchTimer = null;
+let paused = false;
+async function pollAll() {
+  if (paused) return;
+  await Promise.allSettled([fetchData(), fetchOmlx()]);
+}
+function startTimer() {
+  if (fetchTimer) clearInterval(fetchTimer);
+  fetchTimer = setInterval(pollAll, UPDATE_INTERVAL * 1000);
+}
+startTimer();
+pollAll();
+
+// Start MiniMax independent timer (10s fixed)
+startMiniMaxTimer();
+Promise.allSettled([fetchMiniMax(), fetchBanwagon()]);
+
+// Page Visibility API
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) {
+    paused = true;
+    if (fetchTimer) clearInterval(fetchTimer);
+    fetchTimer = null;
+    if (mmPollTimer) clearInterval(mmPollTimer);
+  } else {
+    paused = false;
+    startTimer();
+    startMiniMaxTimer();
+  }
+});
+
+// Live toggle
+let isLive = true;
+function toggleLive() {
+  isLive = !isLive;
+  paused = !isLive;
+  const track = el('toggle-track');
+  const label = el('toggle-label');
+  if (isLive) {
+    track.classList.remove('off');
+    label.textContent = 'LIVE';
+    startTimer();
+  } else {
+    track.classList.add('off');
+    label.textContent = 'PAUSED';
+    if (fetchTimer) clearInterval(fetchTimer);
+  }
+}
+
+// Interval slider
+const slider = el('int-slider');
+slider.addEventListener('input', function() {
+  const v = parseInt(this.value);
+  UPDATE_INTERVAL = v;
+  el('int-val').textContent = v + 's';
+  el('footer-interval').textContent = v;
+  startTimer();
+});
+</script>
+</body>
+</html>
