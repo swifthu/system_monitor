@@ -52,6 +52,7 @@ func NewHandler(col *collector.Collector) http.Handler {
 	h.mux.HandleFunc("/metrics", h.handleNotFound)
 	h.mux.HandleFunc("/health", h.handleNotFound)
 	h.mux.HandleFunc("/", h.handleIndex)
+	h.mux.HandleFunc("/api/openclaw", h.handleOpenClaw)
 
 	return h
 }
@@ -387,6 +388,19 @@ func (h *Handler) serveBanwagonError(w http.ResponseWriter, msg string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusServiceUnavailable)
 	json.NewEncoder(w).Encode(map[string]string{"error": msg})
+}
+
+func (h *Handler) handleOpenClaw(w http.ResponseWriter, r *http.Request) {
+	data, err := collector.CollectOpenClaw()
+	if err != nil {
+		log.Printf("OpenCLAW collection error: %v", err)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusServiceUnavailable)
+		json.NewEncoder(w).Encode(map[string]string{"error": "openclaw unavailable"})
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(data)
 }
 
 // Config holds the application configuration

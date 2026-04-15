@@ -168,6 +168,7 @@
   <div class="tab active" data-tab="system">SYSTEM</div>
   <div class="tab" data-tab="oml">oMLX</div>
   <div class="tab" data-tab="api">QUOTA</div>
+  <div class="tab" data-tab="openclaw">OpenCLAW</div>
 </div>
 
 <!-- SYSTEM -->
@@ -429,6 +430,70 @@
   </div>
 </div>
 
+<!-- OpenCLAW -->
+<div id="tab-openclaw" class="tab-panel">
+  <div class="grid">
+    <!-- Task Stats -->
+    <div class="card" style="border-left:3px solid #ed8936;">
+      <div class="card-title" style="color:#ed8936;">Task Stats</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+        <div style="text-align:center;padding:8px 4px;background:#f7fafc;border-radius:8px;">
+          <div style="font-size:22px;font-weight:800;color:#2d3748;" id="oc-total">--</div>
+          <div style="font-size:9px;color:#a0aec0;">Total</div>
+        </div>
+        <div style="text-align:center;padding:8px 4px;background:#f7fafc;border-radius:8px;">
+          <div style="font-size:22px;font-weight:800;color:#48bb78;" id="oc-succeeded">--</div>
+          <div style="font-size:9px;color:#a0aec0;">Succeeded</div>
+        </div>
+        <div style="text-align:center;padding:8px 4px;background:#f7fafc;border-radius:8px;">
+          <div style="font-size:22px;font-weight:800;color:#fc8181;" id="oc-failed">--</div>
+          <div style="font-size:9px;color:#a0aec0;">Failed</div>
+        </div>
+        <div style="text-align:center;padding:8px 4px;background:#f7fafc;border-radius:8px;">
+          <div style="font-size:22px;font-weight:800;color:#f6e05e;" id="oc-timedout">--</div>
+          <div style="font-size:9px;color:#a0aec0;">Timed Out</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Recent Tasks -->
+    <div class="card" style="border-left:3px solid #718096;">
+      <div class="card-title" style="color:#718096;">Recent Tasks</div>
+      <div id="oc-recent-tasks" style="font-size:10px;color:#4a5568;"></div>
+    </div>
+
+    <!-- Cron Jobs -->
+    <div class="card" style="border-left:3px solid #38b2ac;">
+      <div class="card-title" style="color:#38b2ac;">Cron Jobs</div>
+      <div id="oc-cron-jobs"></div>
+    </div>
+
+    <!-- Telegram -->
+    <div class="card" style="border-left:3px solid #4299e1;">
+      <div class="card-title" style="color:#4299e1;">Telegram Bots</div>
+      <div id="oc-telegram"></div>
+    </div>
+
+    <!-- Agents -->
+    <div class="card" style="border-left:3px solid #9f7aea;">
+      <div class="card-title" style="color:#9f7aea;">Agents</div>
+      <div id="oc-agents"></div>
+    </div>
+
+    <!-- Models -->
+    <div class="card" style="border-left:3px solid #ed8936;">
+      <div class="card-title" style="color:#ed8936;">Models</div>
+      <div id="oc-models"></div>
+    </div>
+
+    <!-- Session Stats -->
+    <div class="card" style="border-left:3px solid #38b2ac;">
+      <div class="card-title" style="color:#38b2ac;">Sessions</div>
+      <div id="oc-sessions"></div>
+    </div>
+  </div>
+</div>
+
 <footer>Auto-refresh <span id="footer-interval">2</span>s &nbsp;·&nbsp; Source: Go Backend &nbsp;·&nbsp; <span class="live-dot"></span>Live</footer>
 
 <script>
@@ -437,6 +502,7 @@ const MAX_HIST = 60;
 let UPDATE_INTERVAL = 2;
 
 let history = { mem: [], cpu: [], power: [] };
+let lastGpuTemp = null; // persist last valid GPU temp
 
 function el(id) { return document.getElementById(id); }
 function round(v, d) { if (v == null || isNaN(v)) return '--'; return Number(v).toFixed(d != null ? d : 1); }
@@ -584,25 +650,41 @@ function updateUI(data) {
       const maxPw = Math.max(cpuPw, gpuPw, ramPw, sysPw, 1);
       const items = [
         {label:'CPU', val:cpuPw, color:'#ed8936'},
-        {label:'GPU', val:gpuPw, color:'#9f7aea'},
+        {label:'GPU', val:gpuPw, color:'#9f7aea', idle: gpuPw === 0},
         {label:'RAM', val:ramPw, color:'#38b2ac'},
         {label:'SYS', val:sysPw, color:'#2d3748'},
-      ].filter(x => x.val > 0);
-      pwRows.innerHTML = items.map(c => `
-        <div style="display:flex;align-items:center;gap:6px;font-size:10px;margin-bottom:3px;">
+      ].filter(x => x.val > 0 || x.label === 'GPU');
+      pwRows.innerHTML = items.map(c => {
+        if (c.idle) {
+          return `<div style="display:flex;align-items:center;gap:6px;font-size:10px;margin-bottom:3px;">
+            <span style="width:24px;color:var(--text-muted);">${c.label}</span>
+            <div style="flex:1;background:#edf2f7;border-radius:3px;height:4px;overflow:hidden;">
+              <div style="height:100%;width:0%;background:${c.color};border-radius:3px;"></div>
+            </div>
+            <span style="width:40px;text-align:right;font-weight:600;color:var(--text-muted);">Idle</span>
+          </div>`;
+        }
+        return `<div style="display:flex;align-items:center;gap:6px;font-size:10px;margin-bottom:3px;">
           <span style="width:24px;color:var(--text-muted);">${c.label}</span>
           <div style="flex:1;background:#edf2f7;border-radius:3px;height:4px;overflow:hidden;">
             <div style="height:100%;width:${Math.min(100,(c.val/maxPw)*100)}%;background:${c.color};border-radius:3px;"></div>
           </div>
           <span style="width:40px;text-align:right;font-weight:600;">${round(c.val,1)}W</span>
-        </div>`).join('');
+        </div>`;
+      }).join('');
     } else {
       pwRows.innerHTML = '<div style="font-size:11px;color:var(--text-muted);">No power data</div>';
     }
 
     // Temperature
     const cpuTemp = (pw && pw.cpu_temp) || 0;
-    const gpuTemp = (pw && pw.gpu_temp) || 0;
+    let gpuTemp = (pw && pw.gpu_temp) || 0;
+    // Use last valid GPU temp if current is invalid
+    if (gpuTemp <= 0 && lastGpuTemp != null) {
+      gpuTemp = lastGpuTemp;
+    } else if (gpuTemp > 0) {
+      lastGpuTemp = gpuTemp;
+    }
     if (cpuTemp > 0) {
       el('temp-cpu').innerHTML = round(cpuTemp, 0) + '<span style="font-size:13px;font-weight:400;color:var(--text-muted)">°C</span>';
       el('temp-cpu-bar').style.width = Math.min(100, cpuTemp) + '%';
@@ -688,8 +770,10 @@ async function fetchMiniMax() {
     }
 
     list.innerHTML = models.map(m => {
-      const pct5h = m.total_5h > 0 ? Math.round((m.remain_5h / m.total_5h) * 100) : 0;
-      const pctW = m.total_week > 0 ? Math.round((m.remain_week / m.total_week) * 100) : 0;
+      const usage5h = m.total_5h - m.remain_5h;
+      const usageWeek = m.total_week - m.remain_week;
+      const pct5h = m.total_5h > 0 ? Math.round((usage5h / m.total_5h) * 100) : 0;
+      const pctW = m.total_week > 0 ? Math.round((usageWeek / m.total_week) * 100) : 0;
       const color5h = pct5h > 50 ? '#48bb78' : pct5h > 20 ? '#ed8936' : '#fc8181';
       const colorW = pctW > 50 ? '#48bb78' : pctW > 20 ? '#ed8936' : '#fc8181';
       const modelName = escapeHtml(m.name) || '--';
@@ -703,7 +787,7 @@ async function fetchMiniMax() {
           <div>
             <div style="font-size:10px;color:#a0aec0;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">${intervalLabel}</div>
             <div style="display:flex;align-items:baseline;gap:6px;">
-              <span style="font-size:20px;font-weight:800;color:#2d3748;">${m.remain_5h}</span>
+              <span style="font-size:20px;font-weight:800;color:#2d3748;">${usage5h}</span>
               <span style="font-size:11px;color:#a0aec0;">/ ${m.total_5h}</span>
             </div>
             <div class="bar-bg" style="height:4px;margin-top:6px;"><div class="bar-fill" style="width:${pct5h}%;background:${color5h};border-radius:2px;"></div></div>
@@ -711,7 +795,7 @@ async function fetchMiniMax() {
           <div>
             <div style="font-size:10px;color:#a0aec0;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">Week</div>
             <div style="display:flex;align-items:baseline;gap:6px;">
-              <span style="font-size:20px;font-weight:800;color:#2d3748;">${m.remain_week}</span>
+              <span style="font-size:20px;font-weight:800;color:#2d3748;">${usageWeek}</span>
               <span style="font-size:11px;color:#a0aec0;">/ ${m.total_week}</span>
             </div>
             <div class="bar-bg" style="height:4px;margin-top:6px;"><div class="bar-fill" style="width:${pctW}%;background:${colorW};border-radius:2px;"></div></div>
@@ -823,6 +907,91 @@ pollAll();
 // Start MiniMax independent timer (10s fixed)
 startMiniMaxTimer();
 Promise.allSettled([fetchMiniMax(), fetchBanwagon()]);
+
+// OpenCLAW
+let openclawTimer = null;
+const OPENCLAW_INTERVAL = 30;
+
+async function fetchOpenClaw() {
+  try {
+    const r = await fetch('/api/openclaw');
+    if (!r.ok) {
+      document.getElementById('oc-total').textContent = '--';
+      return;
+    }
+    const d = await r.json();
+    if (d.error) {
+      document.getElementById('oc-total').textContent = '--';
+      return;
+    }
+    const t = d.tasks || {};
+    document.getElementById('oc-total').textContent = t.total || 0;
+    document.getElementById('oc-succeeded').textContent = t.succeeded || 0;
+    document.getElementById('oc-failed').textContent = t.failed || 0;
+    document.getElementById('oc-timedout').textContent = t.timed_out || 0;
+
+    // Recent tasks - show runtime, label/task, status, error
+    const recent = (d.recent_tasks || []).slice(0, 8);
+    document.getElementById('oc-recent-tasks').innerHTML = recent.map(r => {
+      const runtime = r.runtime || r.scope_kind || 'cli';
+      const label = r.label || (r.task ? r.task.substring(0, 40) + (r.task.length > 40 ? '...' : '') : '--');
+      const statusColor = r.status === 'succeeded' ? '#48bb78' : r.status === 'failed' ? '#fc8181' : r.status === 'timed_out' ? '#f6e05e' : r.status === 'lost' ? '#fc8181' : '#a0aec0';
+      const errorHint = r.error_msg ? '<br><span style="font-size:9px;color:#fc8181;">' + escapeHtml(r.error_msg.substring(0, 60)) + '</span>' : '';
+      return `<div style="padding:6px 0;border-bottom:1px solid #e2e8f0;"><span style="font-size:9px;background:#ed8936;color:#fff;padding:1px 4px;border-radius:3px;margin-right:6px;">${escapeHtml(runtime)}</span><span style="font-size:11px;color:#2d3748;">${escapeHtml(label)}</span><br><span style="font-size:10px;color:${statusColor};">${escapeHtml(r.status || '--')}</span>${errorHint}</div>`;
+    }).join('') || '<div style="color:#a0aec0;">No recent tasks</div>';
+
+    // Cron jobs
+    const cron = (d.cron_jobs || []);
+    document.getElementById('oc-cron-jobs').innerHTML = cron.map(c => {
+      const next = c.next_run_at_ms ? new Date(c.next_run_at_ms).toLocaleString() : '--';
+      const statusColor = c.last_status === 'ok' ? '#48bb78' : c.last_status === 'error' ? '#fc8181' : '#a0aec0';
+      const errWarn = c.consecutive_errors > 0 ? `<span style="color:#fc8181;"> ⚠ ${c.consecutive_errors}err</span>` : '';
+      return `<div style="padding:6px 0;border-bottom:1px solid #e2e8f0;"><b style="font-size:12px;">${escapeHtml(c.name || '--')}</b><br><span style="font-size:10px;color:#718096;">Agent: ${escapeHtml(c.agent_id)}</span><br><span style="font-size:10px;">Next: ${escapeHtml(next)}</span> <span style="font-size:10px;color:${statusColor};">${escapeHtml(c.last_status || '--')}</span>${errWarn}</div>`;
+    }).join('') || '<div style="color:#a0aec0;">No cron jobs</div>';
+
+    // Telegram bots
+    const tg = (d.telegram || []);
+    document.getElementById('oc-telegram').innerHTML = tg.map(b =>
+      `<div style="padding:4px 0;border-bottom:1px solid #e2e8f0;">${escapeHtml(b.name.replace('_bot', '').replace('update-offset-', ''))}: <span style="color:${b.active ? '#48bb78' : '#a0aec0'}">${b.active ? 'Active' : 'Idle'}</span></div>`
+    ).join('') || '<div style="color:#a0aec0;">No Telegram bots</div>';
+
+    // Agents
+    const agents = (d.agents || []);
+    document.getElementById('oc-agents').innerHTML = agents.map(a =>
+      `<div style="padding:5px 0;border-bottom:1px solid #e2e8f0;"><b style="font-size:11px;">${escapeHtml(a.name || a.id)}</b><br><span style="font-size:10px;color:#718096;">${escapeHtml(a.id)} · ${escapeHtml(a.model || '--')}</span></div>`
+    ).join('') || '<div style="color:#a0aec0;">No agents</div>';
+
+    // Models
+    const models = (d.models || []);
+    document.getElementById('oc-models').innerHTML = models.slice(0, 12).map(m =>
+      `<div style="padding:4px 0;border-bottom:1px solid #e2e8f0;"><b style="font-size:10px;">${escapeHtml(m.name || m.id)}</b><br><span style="font-size:9px;color:#718096;">${escapeHtml(m.provider)} · ctx:${m.context_window ? Math.round(m.context_window/1024) + 'K' : '--'}</span></div>`
+    ).join('') || '<div style="color:#a0aec0;">No models</div>';
+
+    // Session stats
+    const sessions = (d.session_stats || []);
+    document.getElementById('oc-sessions').innerHTML = sessions.map(s => {
+      const last = s.last_session_at ? new Date(s.last_session_at * 1000).toLocaleDateString() : 'never';
+      return `<div style="padding:4px 0;border-bottom:1px solid #e2e8f0;"><b style="font-size:11px;">${escapeHtml(s.agent_id)}</b><br><span style="font-size:10px;color:#718096;">${s.session_count} sessions · last: ${last}</span></div>`;
+    }).join('') || '<div style="color:#a0aec0;">No sessions</div>';
+  } catch(e) { console.warn('openclaw fetch error', e); }
+}
+
+function startOpenClawTimer() {
+  if (openclawTimer) clearInterval(openclawTimer);
+  openclawTimer = setInterval(fetchOpenClaw, OPENCLAW_INTERVAL * 1000);
+}
+
+// Visibility API
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) {
+    if (openclawTimer) { clearInterval(openclawTimer); openclawTimer = null; }
+  } else {
+    startOpenClawTimer();
+    fetchOpenClaw();
+  }
+});
+startOpenClawTimer();
+fetchOpenClaw();
 
 // Page Visibility API
 document.addEventListener('visibilitychange', () => {
