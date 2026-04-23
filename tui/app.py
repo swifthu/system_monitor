@@ -171,7 +171,7 @@ class SystemMonitorApp(App):
                 # Line 1: Model names
                 if right:
                     name_col_width = 45
-                    bar_col_width = 20
+                    bar_col_width = 45
                     left_line = f"[cyan]{left_name}[/]"
                     right_line = f"[cyan]{right_name}[/]"
                     lines.append(f"{left_line:<{name_col_width}} {right_line}")
