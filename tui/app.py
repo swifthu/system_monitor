@@ -1,10 +1,9 @@
 """System Monitor TUI - Main App."""
 from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual.containers import Container
 from textual.widgets import Header, Footer, TabbedContent, TabPane, Static
 
-from api_client import APIClient
+from api_client import APIClient, get_mmx_quota
 from tui.widgets import MetricCard
 
 # Color scheme per metric
@@ -15,6 +14,8 @@ METRIC_COLORS = {
     "battery": "yellow",
     "gpu": "magenta",
     "temperature": "red",
+    "disk": "magenta",
+    "quota": "yellow",
 }
 
 def format_bytes(bytes_val: float) -> str:
@@ -48,6 +49,7 @@ class SystemMonitorApp(App):
         super().__init__()
         self.api = APIClient()
         self.refresh_interval = 2.0
+        self.snapshot = None
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -59,18 +61,10 @@ class SystemMonitorApp(App):
                 yield MetricCard("GPU", "--", METRIC_COLORS["gpu"], id="gpu-card")
                 yield MetricCard("Temperature", "--", METRIC_COLORS["temperature"], id="temp-card")
             with TabPane("SYSTEM", id="system"):
-                yield self._build_system()
+                yield Static("", id="system-info")
             with TabPane("AGENTS", id="agents"):
-                yield self._build_agents()
+                yield Static("", id="agents-info")
         yield Footer()
-
-    def _build_system(self) -> Static:
-        """Build system detail view."""
-        return Static("[bold]System Details[/]\n\nComing soon...", id="system-placeholder")
-
-    def _build_agents(self) -> Static:
-        """Build agents overview."""
-        return Static("[bold]Agent Status[/]\n\nComing soon...", id="agents-placeholder")
 
     async def on_mount(self):
         self.set_interval(self.refresh_interval, self.update_metrics)
@@ -78,12 +72,14 @@ class SystemMonitorApp(App):
 
     async def update_metrics(self):
         try:
-            snapshot = await self.api.get_snapshot()
+            self.snapshot = await self.api.get_snapshot()
         except Exception:
             return
 
-        if not snapshot:
+        if not self.snapshot:
             return
+
+        snapshot = self.snapshot
 
         # Calculate CPU percent from cores (100 - idle = used percent)
         cpu_percent = 0.0
@@ -119,6 +115,74 @@ class SystemMonitorApp(App):
         # Update Temperature card
         if snapshot.cpu_temp > 0:
             self.query_one("#temp-card", MetricCard).update(f"CPU: {snapshot.cpu_temp:.0f}°C")
+
+        # Update SYSTEM tab
+        self._update_system_tab(snapshot)
+
+        # Update AGENTS tab
+        self._update_agents_tab()
+
+    def _update_system_tab(self, snapshot):
+        """Update SYSTEM tab with disk and CPU core info."""
+        lines = ["[bold]System Details[/]\n"]
+
+        # Disk info
+        for d in snapshot.disk:
+            used_bar = "█" * int(d.used_percent / 5) + "░" * (20 - int(d.used_percent / 5))
+            lines.append(f"[bold {METRIC_COLORS['disk']}]Disk: {d.path}[/]")
+            lines.append(f"  {format_bytes(d.used)} / {format_bytes(d.total)}")
+            lines.append(f"  [{used_bar}] {d.used_percent:.1f}%")
+            lines.append("")
+
+        # CPU cores
+        if snapshot.cpu_cores:
+            lines.append("[bold cyan]CPU Cores:[/]")
+            for i, core in enumerate(snapshot.cpu_cores[:4]):  # Show first 4 cores
+                used = 100 - core.idle
+                bar = "█" * int(used / 5) + "░" * (20 - int(used / 5))
+                lines.append(f"  Core {i}: [{bar}] {used:.1f}%")
+            if len(snapshot.cpu_cores) > 4:
+                lines.append(f"  ... and {len(snapshot.cpu_cores) - 4} more cores")
+            lines.append("")
+
+        self.query_one("#system-info", Static).update("\n".join(lines))
+
+    def _update_agents_tab(self):
+        """Update AGENTS tab with quota info."""
+        lines = ["[bold]Agent Status[/]\n"]
+
+        # MiniMax Quota via mmx CLI
+        quota = get_mmx_quota()
+        if quota and "model_remains" in quota:
+            lines.append("[bold yellow]MiniMax Quota:[/]\n")
+            for model in quota["model_remains"][:8]:  # Show first 8 models
+                name = model.get("model_name", "unknown")
+                total = model.get("current_interval_total_count", 0)
+                used = model.get("current_interval_usage_count", 0)
+                remaining = total - used
+                weekly_total = model.get("current_weekly_total_count", 0)
+                weekly_used = model.get("current_weekly_usage_count", 0)
+                weekly_remaining = weekly_total - weekly_used
+
+                # Show as progress bar if has limit
+                if total > 0:
+                    pct = (used / total) * 100
+                    bar = "█" * int(pct / 5) + "░" * (20 - int(pct / 5))
+                    lines.append(f"[cyan]{name}:[/]")
+                    lines.append(f"  [{bar}] {remaining}/{total} (daily)")
+                elif weekly_total > 0:
+                    pct = (weekly_used / weekly_total) * 100
+                    bar = "█" * int(pct / 5) + "░" * (20 - int(pct / 5))
+                    lines.append(f"[cyan]{name}:[/]")
+                    lines.append(f"  [{bar}] {weekly_remaining}/{weekly_total} (weekly)")
+                else:
+                    lines.append(f"[cyan]{name}:[/] unlimited")
+            if len(quota["model_remains"]) > 8:
+                lines.append(f"\n... and {len(quota['model_remains']) - 8} more models")
+        else:
+            lines.append("[dim]MiniMax quota unavailable[/]")
+
+        self.query_one("#agents-info", Static).update("\n".join(lines))
 
     def action_switch_tab_1(self):
         self.active_tab = "dashboard"

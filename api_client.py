@@ -1,5 +1,7 @@
 """API client for System Monitor Go backend."""
 import httpx
+import subprocess
+import json
 from dataclasses import dataclass
 from typing import Optional, List
 
@@ -113,3 +115,18 @@ def parse_snapshot(data: dict) -> SystemSnapshot:
         disk=disk_info,
         network=network_info,
     )
+
+def get_mmx_quota() -> Optional[dict]:
+    """Get MiniMax quota using mmx CLI."""
+    try:
+        result = subprocess.run(
+            ["mmx", "quota"],
+            capture_output=True,
+            text=True,
+            timeout=10
+        )
+        if result.returncode == 0:
+            return json.loads(result.stdout)
+        return None
+    except Exception:
+        return None

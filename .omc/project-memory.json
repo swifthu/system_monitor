@@ -115,8 +115,8 @@
     },
     {
       "path": "tui/app.py",
-      "accessCount": 30,
-      "lastAccessed": 1776947423138,
+      "accessCount": 32,
+      "lastAccessed": 1776947591744,
       "type": "file"
     },
     {
@@ -132,6 +132,12 @@
       "type": "file"
     },
     {
+      "path": "api_client.py",
+      "accessCount": 13,
+      "lastAccessed": 1776947565543,
+      "type": "file"
+    },
+    {
       "path": "config/config.go",
       "accessCount": 12,
       "lastAccessed": 1776921097809,
@@ -141,12 +147,6 @@
       "path": "collector/collector.go",
       "accessCount": 11,
       "lastAccessed": 1776921006366,
-      "type": "file"
-    },
-    {
-      "path": "api_client.py",
-      "accessCount": 11,
-      "lastAccessed": 1776947147980,
       "type": "file"
     },
     {
