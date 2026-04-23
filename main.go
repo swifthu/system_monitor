@@ -32,8 +32,28 @@ func main() {
 	// Create collector with background collection
 	col := collector.NewCollector(2 * time.Second)
 
-	// Create HTTP handler with collector
+	// Start collector in background (must start before metrics collector references it)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go col.Start(ctx)
+
 	var metricsDB *collector.MetricsDB
+	var metricsCol *collector.MetricsCollector
+	if cfg.Metrics.Enabled {
+		db, err := collector.NewMetricsDB(cfg.Metrics.DBPath)
+		if err != nil {
+			log.Printf("Metrics DB init failed: %v", err)
+		} else {
+			metricsDB = db
+			if err := db.Purge(cfg.Metrics.RetentionDays); err != nil {
+				log.Printf("Metrics purge failed: %v", err)
+			}
+			metricsCol = collector.NewMetricsCollector(col, db, cfg.Metrics.WriteInterval)
+			metricsCol.Start(ctx)
+		}
+	}
+
+	// Create HTTP handler with collector (after metricsDB may be initialized)
 	handler := api.NewHandler(col, metricsDB)
 
 	// Create HTTP server
@@ -43,27 +63,6 @@ func main() {
 		ReadTimeout:  10 * time.Second,
 		WriteTimeout: 30 * time.Second,
 		IdleTimeout:  60 * time.Second,
-	}
-
-	// Start collector in background
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	go col.Start(ctx)
-
-	var metricsCol *collector.MetricsCollector
-	if cfg.Metrics.Enabled {
-		db, err := collector.NewMetricsDB(cfg.Metrics.DBPath)
-		if err != nil {
-			log.Printf("Metrics DB init failed: %v", err)
-		} else {
-			metricsDB = db // store for handler
-			if err := db.Purge(cfg.Metrics.RetentionDays); err != nil {
-				log.Printf("Metrics purge failed: %v", err)
-			}
-			metricsCol = collector.NewMetricsCollector(col, db, cfg.Metrics.WriteInterval)
-			metricsCol.Start(ctx)
-		}
 	}
 
 	log.Printf("System Monitor starting on http://localhost%s\n", srv.Addr)
