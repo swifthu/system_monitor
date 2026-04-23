@@ -73,6 +73,12 @@ class SystemMonitorApp(App):
             MetricCard("Memory", "--", METRIC_COLORS["memory"], id="mem-card"),
             MetricCard("Network", "--", METRIC_COLORS["network"], id="net-card"),
         )
+        # Row 2: Battery, GPU, Temperature
+        grid.mount(
+            MetricCard("Battery", "--", METRIC_COLORS["battery"], id="bat-card"),
+            MetricCard("GPU", "--", METRIC_COLORS["gpu"], id="gpu-card"),
+            MetricCard("Temperature", "--", METRIC_COLORS["temperature"], id="temp-card"),
+        )
         return grid
 
     def _build_system(self) -> Container:
@@ -123,6 +129,34 @@ class SystemMonitorApp(App):
         self.query_one("#net-card", MetricCard).update(
             f"↓ {format_rate(snapshot.network_rx)}\n↑ {format_rate(snapshot.network_tx)}"
         )
+
+        # Update Battery card
+        if snapshot.battery_percent >= 0:
+            time_str = ""
+            if snapshot.battery_time_remaining:
+                hours = snapshot.battery_time_remaining // 3600
+                mins = (snapshot.battery_time_remaining % 3600) // 60
+                time_str = f" ⚡{hours}:{mins:02d}"
+            self.query_one("#bat-card", MetricCard).update(
+                f"{snapshot.battery_percent}%{time_str}",
+                bar_value=snapshot.battery_percent
+            )
+
+        # Update GPU card
+        if snapshot.gpu_total > 0:
+            gpu_percent = (snapshot.gpu_power / snapshot.gpu_total * 100) if snapshot.gpu_total > 0 else 0
+            self.query_one("#gpu-card", MetricCard).update(
+                f"{snapshot.gpu_power:.0f}W / {snapshot.gpu_total:.0f}W",
+                bar_value=gpu_percent
+            )
+        elif snapshot.gpu_power > 0:
+            self.query_one("#gpu-card", MetricCard).update(f"{snapshot.gpu_power:.0f}W")
+
+        # Update Temperature card
+        if snapshot.temp_cpu > 0 or snapshot.temp_gpu > 0:
+            self.query_one("#temp-card", MetricCard).update(
+                f"CPU: {snapshot.temp_cpu:.0f}°C\nGPU: {snapshot.temp_gpu:.0f}°C"
+            )
 
     def action_switch_tab_1(self):
         self.active_tab = "dashboard"
