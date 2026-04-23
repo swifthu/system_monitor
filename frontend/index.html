@@ -236,6 +236,65 @@ canvas {
   width: 100%;
   margin-top: 8px;
 }
+
+/* Dashboard */
+.dashboard-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+.dashboard-title {
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.time-range-selector {
+  display: flex;
+  gap: 6px;
+}
+
+.range-btn {
+  padding: 6px 12px;
+  border-radius: 6px;
+  border: 1px solid var(--card-border);
+  background: var(--tab-bg);
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  transition: all 0.2s ease;
+}
+
+.range-btn:hover {
+  color: var(--text);
+  background: var(--tab-active);
+}
+
+.range-btn.active {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+}
+
+.dashboard-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 16px;
+}
+
+.chart-card {
+  min-height: 200px;
+}
+
+.tab-panel {
+  display: none;
+}
+
+.tab-panel.active {
+  display: block;
+}
 </style>
 </head>
 <body>
@@ -251,10 +310,57 @@ canvas {
 
 <!-- Tabs -->
 <div class="tabs">
-  <div class="tab active" data-tab="system">SYSTEM</div>
+  <div class="tab" data-tab="dashboard">DASHBOARD</div>
+  <div class="tab" data-tab="system">SYSTEM</div>
   <div class="tab" data-tab="oml">oMLX</div>
   <div class="tab" data-tab="api">QUOTA</div>
   <div class="tab" data-tab="openclaw">OpenCLAW</div>
+</div>
+
+<!-- DASHBOARD -->
+<div id="tab-dashboard" class="tab-panel active">
+  <div class="dashboard-header">
+    <div class="dashboard-title">System Overview</div>
+    <div class="time-range-selector">
+      <button class="range-btn active" data-range="1">1H</button>
+      <button class="range-btn" data-range="6">6H</button>
+      <button class="range-btn" data-range="24">24H</button>
+      <button class="range-btn" data-range="168">7D</button>
+      <button class="range-btn" data-range="720">30D</button>
+    </div>
+  </div>
+  <div class="dashboard-grid">
+    <div class="glass-card chart-card">
+      <div class="card-title">CPU Usage</div>
+      <div class="value" id="dash-cpu-value">--</div>
+      <canvas id="chart-cpu" height="120"></canvas>
+    </div>
+    <div class="glass-card chart-card">
+      <div class="card-title">Memory</div>
+      <div class="value" id="dash-mem-value">--</div>
+      <canvas id="chart-mem" height="120"></canvas>
+    </div>
+    <div class="glass-card chart-card">
+      <div class="card-title">Network RX</div>
+      <div class="value" id="dash-net-rx-value">--</div>
+      <canvas id="chart-net-rx" height="120"></canvas>
+    </div>
+    <div class="glass-card chart-card">
+      <div class="card-title">Network TX</div>
+      <div class="value" id="dash-net-tx-value">--</div>
+      <canvas id="chart-net-tx" height="120"></canvas>
+    </div>
+    <div class="glass-card chart-card">
+      <div class="card-title">GPU Power</div>
+      <div class="value" id="dash-gpu-power-value">--</div>
+      <canvas id="chart-gpu-power" height="120"></canvas>
+    </div>
+    <div class="glass-card chart-card">
+      <div class="card-title">oMLX Cache Hit</div>
+      <div class="value" id="dash-oml-value">--</div>
+      <canvas id="chart-oml" height="120"></canvas>
+    </div>
+  </div>
 </div>
 
 <!-- SYSTEM -->
@@ -1338,6 +1444,93 @@ slider.addEventListener('input', function() {
   el('int-val').textContent = v + 's';
   el('footer-interval').textContent = v;
   startTimer();
+});
+
+// ========== Dashboard ==========
+const dashboardState = {
+    range: 1,
+    charts: {},
+};
+
+function initDashboard() {
+    const charts = [
+        { id: 'chart-cpu', metric: 'cpu_percent', unit: '%', color: '#58a6ff', max: 100 },
+        { id: 'chart-mem', metric: 'memory_percent', unit: '%', color: '#a371f7', max: 100 },
+        { id: 'chart-net-rx', metric: 'network_rx_bytes', unit: 'B/s', color: '#3fb950', max: undefined },
+        { id: 'chart-net-tx', metric: 'network_tx_bytes', unit: 'B/s', color: '#f0883e', max: undefined },
+        { id: 'chart-gpu-power', metric: 'gpu_power', unit: 'W', color: '#f85149', max: undefined },
+        { id: 'chart-oml', metric: 'oml_cache_hit_rate', unit: '', color: '#58a6ff', max: 1 },
+    ];
+
+    charts.forEach(cfg => {
+        const canvas = document.getElementById(cfg.id);
+        if (canvas) {
+            dashboardState.charts[cfg.metric] = new LineChart(canvas, {
+                color: cfg.color,
+                unit: cfg.unit,
+                max: cfg.max,
+                fillColor: cfg.color.replace(')', ', 0.15)').replace('rgb', 'rgba'),
+            });
+        }
+    });
+
+    document.querySelectorAll('.range-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            document.querySelectorAll('.range-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            dashboardState.range = parseInt(btn.dataset.range);
+            loadDashboardData();
+        });
+    });
+}
+
+async function loadDashboardData() {
+    const now = Math.floor(Date.now() / 1000);
+    const from = now - dashboardState.range * 3600;
+
+    const metrics = ['cpu_percent', 'memory_percent', 'network_rx_bytes', 'network_tx_bytes', 'gpu_power', 'oml_cache_hit_rate'];
+
+    for (const metric of metrics) {
+        try {
+            const resp = await fetch(`/api/metrics/query?metric=${metric}&from=${from}&to=${now}`);
+            if (!resp.ok) continue;
+            const data = await resp.json();
+            const points = (data.points || []).map(p => ({
+                timestamp: p.timestamp,
+                value: metric === 'oml_cache_hit_rate' ? p.value * 100 : p.value
+            }));
+
+            const chart = dashboardState.charts[metric];
+            if (chart) {
+                chart.setData(points);
+                if (points.length > 0) {
+                    const last = points[points.length - 1].value;
+                    const unit = chart.config.unit;
+                    const elId = `dash-${metric.replace(/_([rx])$/, '-$1').replace('oml_cache_hit_rate', 'oml')}-value`;
+                    const el = document.getElementById(elId);
+                    if (el) el.textContent = last.toFixed(1) + unit;
+                }
+            }
+        } catch (e) {
+            // Metrics not available yet, skip
+        }
+    }
+}
+
+// Wire up dashboard tab activation
+document.addEventListener('DOMContentLoaded', () => {
+    initDashboard();
+    // Override tab click to handle dashboard
+    document.querySelectorAll('.tab').forEach(tab => {
+        const originalHandler = tab.onclick;
+        tab.addEventListener('click', () => {
+            const tabId = tab.dataset.tab;
+            if (tabId === 'dashboard') {
+                document.querySelectorAll('.range-btn')[0]?.click();
+                loadDashboardData();
+            }
+        });
+    });
 });
 </script>
 </body>
