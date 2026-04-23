@@ -148,8 +148,8 @@ class SystemMonitorApp(App):
                     mins = int((remains_time % 3600000) // 60000)
                     lines.append(f"[bold {c['quota']}]MiniMax Quota:[/]  [dim]reset in {hours}h {mins}m[/]\n")
 
-            # Two-column layout with proper spacing
-            col_width = 45
+            # Two-column grid layout
+            col_width = 42
             for i in range(0, len(models), 2):
                 left = models[i]
                 right = models[i + 1] if i + 1 < len(models) else None
@@ -158,27 +158,36 @@ class SystemMonitorApp(App):
                 left_total = left.get("current_interval_total_count", 0)
                 left_used = left.get("current_interval_usage_count", 0)
                 left_remaining = left_total - left_used
+                left_pct = (left_used / left_total * 100) if left_total > 0 else 0
 
-                def format_model(name, total, used, remaining):
-                    s = f"[cyan]{name}:[/]"
-                    if total > 0:
-                        pct = (used / total) * 100
-                        s += f" [{make_bar(pct)}] {remaining}/{total}"
-                    else:
-                        s += " [dim]unlimited[/]"
-                    return s
+                right_name = right.get("model_name", "unknown") if right else ""
+                right_total = right.get("current_interval_total_count", 0) if right else 0
+                right_used = right.get("current_interval_usage_count", 0) if right else 0
+                right_remaining = right_total - right_used
+                right_pct = (right_used / right_total * 100) if right_total > 0 else 0
 
-                left_line = format_model(left_name, left_total, left_used, left_remaining)
-
-                if right:
-                    right_name = right.get("model_name", "unknown")
-                    right_total = right.get("current_interval_total_count", 0)
-                    right_used = right.get("current_interval_usage_count", 0)
-                    right_remaining = right_total - right_used
-                    right_line = format_model(right_name, right_total, right_used, right_remaining)
-                    lines.append(f"{left_line:<{col_width}} {right_line}")
+                # Format left column
+                if left_total > 0:
+                    left_bar = make_bar(left_pct)
+                    left_text = f"[cyan]{left_name:<28}[/] {left_bar} {left_remaining}/{left_total}"
                 else:
-                    lines.append(left_line)
+                    left_text = f"[cyan]{left_name:<28}[/]  [dim]unlimited[/]"
+
+                # Format right column
+                if right:
+                    if right_total > 0:
+                        right_bar = make_bar(right_pct)
+                        right_text = f"[cyan]{right_name:<28}[/] {right_bar} {right_remaining}/{right_total}"
+                    else:
+                        right_text = f"[cyan]{right_name:<28}[/]  [dim]unlimited[/]"
+                else:
+                    right_text = ""
+
+                # Combine with proper spacing
+                if right_text:
+                    lines.append(f"{left_text:<{col_width}} {right_text}")
+                else:
+                    lines.append(left_text)
         else:
             lines.append("[dim]MiniMax quota unavailable[/]")
 
