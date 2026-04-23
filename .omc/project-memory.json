@@ -115,8 +115,8 @@
     },
     {
       "path": "tui/app.py",
-      "accessCount": 32,
-      "lastAccessed": 1776947591744,
+      "accessCount": 34,
+      "lastAccessed": 1776947853148,
       "type": "file"
     },
     {
@@ -162,6 +162,12 @@
       "type": "file"
     },
     {
+      "path": "tui/widgets.py",
+      "accessCount": 5,
+      "lastAccessed": 1776947859964,
+      "type": "file"
+    },
+    {
       "path": "collector/types.go",
       "accessCount": 4,
       "lastAccessed": 1776920538030,
@@ -189,12 +195,6 @@
       "path": "tui/__init__.py",
       "accessCount": 3,
       "lastAccessed": 1776946653393,
-      "type": "file"
-    },
-    {
-      "path": "tui/widgets.py",
-      "accessCount": 3,
-      "lastAccessed": 1776947313726,
       "type": "file"
     },
     {
