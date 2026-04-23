@@ -171,15 +171,15 @@ class SystemMonitorApp(App):
                 # Line 1: Model names
                 if right:
                     name_col_width = 45
-                    bar_col_width = 45
                     left_line = f"[cyan]{left_name}[/]"
                     right_line = f"[cyan]{right_name}[/]"
                     lines.append(f"{left_line:<{name_col_width}} {right_line}")
 
-                    # Line 2: Progress bars
+                    # Line 2: Progress bars - fixed width for bar info
+                    bar_info_width = 36  # fixed width to align right bars
                     left_bar = f"[{make_bar(left_pct)}] {left_remaining}/{left_total}" if left_total > 0 else "[dim]unlimited[/]"
                     right_bar = f"[{make_bar(right_pct)}] {right_remaining}/{right_total}" if right_total > 0 else "[dim]unlimited[/]"
-                    lines.append(f"{left_bar:<{bar_col_width}} {right_bar}")
+                    lines.append(f"{left_bar:<{bar_info_width}} {right_bar}")
                     lines.append("")  # blank line between pairs
                 else:
                     # Only left model, center it
