@@ -10,10 +10,29 @@ import (
 
 // Config represents the system monitor configuration
 type Config struct {
-	RefreshInterval int      `json:"refresh_interval"` // seconds
-	HistorySize     int      `json:"history_size"`
-	DiskPaths       []string `json:"disk_paths"`       // monitored disk mount points
-	NetworkIfaces   []string `json:"network_ifaces"`  // monitored network interfaces
+	RefreshInterval int           `json:"refresh_interval"` // seconds
+	HistorySize     int           `json:"history_size"`
+	DiskPaths       []string      `json:"disk_paths"`       // monitored disk mount points
+	NetworkIfaces   []string      `json:"network_ifaces"`  // monitored network interfaces
+	Metrics         MetricsConfig `json:"metrics"`
+}
+
+// MetricsConfig holds configuration for metrics persistence
+type MetricsConfig struct {
+	Enabled        bool   `json:"enabled"`
+	WriteInterval  int    `json:"write_interval"`   // seconds, default 60
+	RetentionDays  int    `json:"retention_days"`   // default 30
+	DBPath         string `json:"db_path"`          // default "~/.system_monitor/metrics.db"
+}
+
+// GetMetricsDefaults returns the default metrics configuration
+func (c *Config) GetMetricsDefaults() MetricsConfig {
+	return MetricsConfig{
+		Enabled:        true,
+		WriteInterval:  60,
+		RetentionDays:  30,
+		DBPath:         "~/.system_monitor/metrics.db",
+	}
 }
 
 // DefaultConfig returns the default configuration
@@ -76,6 +95,20 @@ func Load() (*Config, error) {
 	}
 	if cfg.NetworkIfaces == nil {
 		cfg.NetworkIfaces = []string{}
+	}
+
+	// Merge metrics config with defaults
+	if cfg.Metrics.Enabled {
+		defaults := cfg.GetMetricsDefaults()
+		if cfg.Metrics.WriteInterval == 0 {
+			cfg.Metrics.WriteInterval = defaults.WriteInterval
+		}
+		if cfg.Metrics.RetentionDays == 0 {
+			cfg.Metrics.RetentionDays = defaults.RetentionDays
+		}
+		if cfg.Metrics.DBPath == "" {
+			cfg.Metrics.DBPath = defaults.DBPath
+		}
 	}
 
 	return &cfg, nil

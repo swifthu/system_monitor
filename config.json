@@ -1,0 +1,12 @@
+{
+  "minimax_group_id": "2034637637079274343",
+  "minimax_api_key": "sk-cp-GspJ9IWg8GDbzzFWFH_V4I9FQ_w1QUrAyFaoiXZFX99gZb55TOoXw3ZxdcnSv5hfIFWpbDaDgKTV_4vcm28I1qsA7LIJj28zkKS4QEnDTaIh1LFpfKkPRFw",
+  "banwagon_veid": "1120995",
+  "banwagon_api_key": "private_NPyZDHMumVbWt1W0B63Xb58e",
+  "metrics": {
+    "enabled": true,
+    "write_interval": 60,
+    "retention_days": 30,
+    "db_path": "~/.system_monitor/metrics.db"
+  }
+}
