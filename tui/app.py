@@ -137,29 +137,52 @@ class SystemMonitorApp(App):
         # MiniMax Quota via mmx CLI
         quota = get_mmx_quota()
         if quota and "model_remains" in quota:
-            lines.append(f"[bold {c['quota']}]MiniMax Quota:[/]\n")
-            for model in quota["model_remains"]:
-                name = model.get("model_name", "unknown")
-                total = model.get("current_interval_total_count", 0)
-                used = model.get("current_interval_usage_count", 0)
-                remaining = total - used
-                weekly_total = model.get("current_weekly_total_count", 0)
-                weekly_used = model.get("current_weekly_usage_count", 0)
-                weekly_remaining = weekly_total - weekly_used
+            lines.append(f"[bold {c['quota']}]MiniMax Quota:[/]")
+            models = quota["model_remains"]
 
-                # Show model name
-                lines.append(f"[cyan]{name}:[/]")
+            # Build model cards in pairs for two-column layout
+            for i in range(0, len(models), 2):
+                left = models[i]
+                right = models[i + 1] if i + 1 < len(models) else None
 
-                # Daily quota
-                if total > 0:
-                    pct = (used / total) * 100
-                    lines.append(f"  Daily: [{make_bar(pct)}] {remaining}/{total}")
-                elif weekly_total > 0:
-                    pct = (weekly_used / weekly_total) * 100
-                    lines.append(f"  Weekly: [{make_bar(pct)}] {weekly_remaining}/{weekly_total}")
+                left_name = left.get("model_name", "unknown")
+                left_total = left.get("current_interval_total_count", 0)
+                left_used = left.get("current_interval_usage_count", 0)
+                left_remaining = left_total - left_used
+                left_weekly_total = left.get("current_weekly_total_count", 0)
+                left_weekly_used = left.get("current_weekly_usage_count", 0)
+                left_weekly_remaining = left_weekly_total - left_weekly_used
+
+                def format_model(name, total, used, remaining, weekly_total, weekly_used, weekly_remaining):
+                    s = f"[cyan]{name}:[/]"
+                    if total > 0:
+                        pct = (used / total) * 100
+                        s += f" [{make_bar(pct)}] {remaining}/{total}"
+                    elif weekly_total > 0:
+                        pct = (weekly_used / weekly_total) * 100
+                        s += f" [{make_bar(pct)}] {weekly_remaining}/{weekly_total}"
+                    else:
+                        s += " [dim]unlimited[/]"
+                    return s
+
+                left_line = format_model(left_name, left_total, left_used, left_remaining,
+                                        left_weekly_total, left_weekly_used, left_weekly_remaining)
+
+                if right:
+                    right_name = right.get("model_name", "unknown")
+                    right_total = right.get("current_interval_total_count", 0)
+                    right_used = right.get("current_interval_usage_count", 0)
+                    right_remaining = right_total - right_used
+                    right_weekly_total = right.get("current_weekly_total_count", 0)
+                    right_weekly_used = right.get("current_weekly_usage_count", 0)
+                    right_weekly_remaining = right_weekly_total - right_weekly_used
+
+                    right_line = format_model(right_name, right_total, right_used, right_remaining,
+                                            right_weekly_total, right_weekly_used, right_weekly_remaining)
+                    # Pad left to align with right
+                    lines.append(f"{left_line:<50} {right_line}")
                 else:
-                    lines.append(f"  [dim]unlimited[/]")
-                lines.append("")
+                    lines.append(left_line)
         else:
             lines.append("[dim]MiniMax quota unavailable[/]")
 
