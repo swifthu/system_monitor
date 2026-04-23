@@ -7,7 +7,6 @@ MetricCard {
     min-width: 28;
     max-width: 36;
     border: solid $border;
-    border-radius: 8px;
     padding: 1 2;
     margin: 0 1;
 }

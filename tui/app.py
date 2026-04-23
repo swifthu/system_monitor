@@ -42,7 +42,7 @@ class SystemMonitorApp(App):
         Binding("3", "switch_tab_3", "AGENTS", show=False),
     ]
 
-    CSS_PATH = "tui/styles.tcss"
+    CSS_PATH = "styles.tcss"
 
     def __init__(self):
         super().__init__()
@@ -53,50 +53,24 @@ class SystemMonitorApp(App):
         yield Header()
         with TabbedContent():
             with TabPane("DASHBOARD", id="dashboard"):
-                yield self._build_dashboard()
+                yield MetricCard("CPU", "--", METRIC_COLORS["cpu"], id="cpu-card")
+                yield MetricCard("Memory", "--", METRIC_COLORS["memory"], id="mem-card")
+                yield MetricCard("Network", "--", METRIC_COLORS["network"], id="net-card")
+                yield MetricCard("GPU", "--", METRIC_COLORS["gpu"], id="gpu-card")
+                yield MetricCard("Temperature", "--", METRIC_COLORS["temperature"], id="temp-card")
             with TabPane("SYSTEM", id="system"):
                 yield self._build_system()
             with TabPane("AGENTS", id="agents"):
                 yield self._build_agents()
         yield Footer()
 
-    def _build_dashboard(self) -> Container:
-        """Build dashboard grid of metric cards."""
-        grid = Container(id="dashboard-grid")
-        grid.styles.display = "grid"
-        grid.styles.grid_size = "3"
-        grid.styles.gap = "1"
-
-        # Row 1: CPU, Memory, Network
-        grid.mount(
-            MetricCard("CPU", "--", METRIC_COLORS["cpu"], id="cpu-card"),
-            MetricCard("Memory", "--", METRIC_COLORS["memory"], id="mem-card"),
-            MetricCard("Network", "--", METRIC_COLORS["network"], id="net-card"),
-        )
-        # Row 2: GPU, Temperature (Battery added dynamically if present)
-        grid.mount(
-            MetricCard("GPU", "--", METRIC_COLORS["gpu"], id="gpu-card"),
-            MetricCard("Temperature", "--", METRIC_COLORS["temperature"], id="temp-card"),
-        )
-        return grid
-
-    def _build_system(self) -> Container:
+    def _build_system(self) -> Static:
         """Build system detail view."""
-        container = Container(id="system-container")
-        container.styles.padding = "1"
-        container.mount(
-            Static("[bold]System Details[/]\n\nComing soon...", id="system-placeholder")
-        )
-        return container
+        return Static("[bold]System Details[/]\n\nComing soon...", id="system-placeholder")
 
-    def _build_agents(self) -> Container:
+    def _build_agents(self) -> Static:
         """Build agents overview."""
-        container = Container(id="agents-container")
-        container.styles.padding = "1"
-        container.mount(
-            Static("[bold]Agent Status[/]\n\nComing soon...", id="agents-placeholder")
-        )
-        return container
+        return Static("[bold]Agent Status[/]\n\nComing soon...", id="agents-placeholder")
 
     async def on_mount(self):
         self.set_interval(self.refresh_interval, self.update_metrics)
@@ -111,10 +85,10 @@ class SystemMonitorApp(App):
         if not snapshot:
             return
 
-        # Calculate CPU percent from cores (average total percent)
+        # Calculate CPU percent from cores (100 - idle = used percent)
         cpu_percent = 0.0
         if snapshot.cpu_cores:
-            cpu_percent = sum(c.total_percent for c in snapshot.cpu_cores) / len(snapshot.cpu_cores)
+            cpu_percent = sum(100 - c.idle for c in snapshot.cpu_cores) / len(snapshot.cpu_cores)
 
         # Update CPU card
         self.query_one("#cpu-card", MetricCard).update(
@@ -135,33 +109,16 @@ class SystemMonitorApp(App):
             f"↓ {format_rate(total_rx)}\n↑ {format_rate(total_tx)}"
         )
 
-        # Update Battery/Power card (mounted dynamically if power data present)
-        if snapshot.power_percent > 0 or snapshot.power_time_remaining > 0:
-            time_str = ""
-            if snapshot.power_time_remaining > 0:
-                hours = snapshot.power_time_remaining // 3600
-                mins = (snapshot.power_time_remaining % 3600) // 60
-                time_str = f" ⚡{hours}:{mins:02d}"
-            if self.query_one("#bat-card", MetricCard, none_ok=True) is None:
-                bat_card = MetricCard("Battery", "--", METRIC_COLORS["battery"], id="bat-card")
-                self.query_one("#dashboard-grid").mount(bat_card, before=2)
-            self.query_one("#bat-card", MetricCard).update(
-                f"{snapshot.power_percent:.0f}%{time_str}",
-                bar_value=snapshot.power_percent
+        # Update Power card (show power percent if significant)
+        if snapshot.power_percent > 1:  # Only show if > 1%
+            self.query_one("#gpu-card", MetricCard).update(
+                f"Power: {snapshot.power_percent:.0f}%",
+                bar_value=min(snapshot.power_percent, 100)
             )
-
-        # Update GPU card (shows CPU+GPU combined power if available)
-        total_power = snapshot.cpu_power_w + snapshot.gpu_power_w
-        if total_power > 0:
-            self.query_one("#gpu-card", MetricCard).update(f"{total_power:.1f}W")
-        elif snapshot.cpu_power_w > 0:
-            self.query_one("#gpu-card", MetricCard).update(f"{snapshot.cpu_power_w:.1f}W")
 
         # Update Temperature card
-        if snapshot.cpu_temp > 0 or snapshot.gpu_temp > 0:
-            self.query_one("#temp-card", MetricCard).update(
-                f"CPU: {snapshot.cpu_temp:.0f}°C\nGPU: {snapshot.gpu_temp:.0f}°C"
-            )
+        if snapshot.cpu_temp > 0:
+            self.query_one("#temp-card", MetricCard).update(f"CPU: {snapshot.cpu_temp:.0f}°C")
 
     def action_switch_tab_1(self):
         self.active_tab = "dashboard"

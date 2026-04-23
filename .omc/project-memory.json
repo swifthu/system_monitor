@@ -1,0 +1,304 @@
+{
+  "version": "1.0.0",
+  "lastScanned": 1776907472708,
+  "projectRoot": "/Users/jimmyhu/Documents/CC/Projects/system_monitor",
+  "techStack": {
+    "languages": [
+      {
+        "name": "Go",
+        "version": null,
+        "confidence": "high",
+        "markers": [
+          "go.mod"
+        ]
+      }
+    ],
+    "frameworks": [],
+    "packageManager": "go",
+    "runtime": null
+  },
+  "build": {
+    "buildCommand": null,
+    "testCommand": null,
+    "lintCommand": null,
+    "devCommand": null,
+    "scripts": {}
+  },
+  "conventions": {
+    "namingStyle": null,
+    "importStyle": null,
+    "testPattern": null,
+    "fileOrganization": null
+  },
+  "structure": {
+    "isMonorepo": false,
+    "workspaces": [],
+    "mainDirectories": [
+      "tests"
+    ],
+    "gitBranches": null
+  },
+  "customNotes": [],
+  "directoryMap": {
+    "__pycache__": {
+      "path": "__pycache__",
+      "purpose": null,
+      "fileCount": 1,
+      "lastAccessed": 1776907472700,
+      "keyFiles": [
+        "system_monitor.cpython-312.pyc"
+      ]
+    },
+    "api": {
+      "path": "api",
+      "purpose": "API routes",
+      "fileCount": 4,
+      "lastAccessed": 1776907472700,
+      "keyFiles": [
+        "handlers.go",
+        "omlx.go",
+        "quota.go",
+        "system.go"
+      ]
+    },
+    "collector": {
+      "path": "collector",
+      "purpose": null,
+      "fileCount": 9,
+      "lastAccessed": 1776907472700,
+      "keyFiles": [
+        "cache.go",
+        "collector.go",
+        "cpu.go",
+        "disk.go",
+        "memory.go"
+      ]
+    },
+    "config": {
+      "path": "config",
+      "purpose": "Configuration files",
+      "fileCount": 1,
+      "lastAccessed": 1776907472701,
+      "keyFiles": [
+        "config.go"
+      ]
+    },
+    "frontend": {
+      "path": "frontend",
+      "purpose": null,
+      "fileCount": 1,
+      "lastAccessed": 1776907472701,
+      "keyFiles": [
+        "index.html"
+      ]
+    },
+    "tests": {
+      "path": "tests",
+      "purpose": "Test files",
+      "fileCount": 5,
+      "lastAccessed": 1776907472701,
+      "keyFiles": [
+        "__init__.py",
+        "conftest.py",
+        "integration_test.go",
+        "test_dashboard.py",
+        "test_system_monitor.py"
+      ]
+    }
+  },
+  "hotPaths": [
+    {
+      "path": "frontend/index.html",
+      "accessCount": 45,
+      "lastAccessed": 1776946099833,
+      "type": "file"
+    },
+    {
+      "path": "tui/app.py",
+      "accessCount": 30,
+      "lastAccessed": 1776947423138,
+      "type": "file"
+    },
+    {
+      "path": "main.go",
+      "accessCount": 19,
+      "lastAccessed": 1776945957124,
+      "type": "file"
+    },
+    {
+      "path": "api/handlers.go",
+      "accessCount": 17,
+      "lastAccessed": 1776947058413,
+      "type": "file"
+    },
+    {
+      "path": "config/config.go",
+      "accessCount": 12,
+      "lastAccessed": 1776921097809,
+      "type": "file"
+    },
+    {
+      "path": "collector/collector.go",
+      "accessCount": 11,
+      "lastAccessed": 1776921006366,
+      "type": "file"
+    },
+    {
+      "path": "api_client.py",
+      "accessCount": 11,
+      "lastAccessed": 1776947147980,
+      "type": "file"
+    },
+    {
+      "path": "tui/styles.tcss",
+      "accessCount": 6,
+      "lastAccessed": 1776947240421,
+      "type": "file"
+    },
+    {
+      "path": "collector/metrics.go",
+      "accessCount": 5,
+      "lastAccessed": 1776920416241,
+      "type": "file"
+    },
+    {
+      "path": "collector/types.go",
+      "accessCount": 4,
+      "lastAccessed": 1776920538030,
+      "type": "file"
+    },
+    {
+      "path": "tests/test_api_client.py",
+      "accessCount": 4,
+      "lastAccessed": 1776946764487,
+      "type": "file"
+    },
+    {
+      "path": "collector/cpu.go",
+      "accessCount": 3,
+      "lastAccessed": 1776916220619,
+      "type": "file"
+    },
+    {
+      "path": "collector/network.go",
+      "accessCount": 3,
+      "lastAccessed": 1776916220764,
+      "type": "file"
+    },
+    {
+      "path": "tui/__init__.py",
+      "accessCount": 3,
+      "lastAccessed": 1776946653393,
+      "type": "file"
+    },
+    {
+      "path": "tui/widgets.py",
+      "accessCount": 3,
+      "lastAccessed": 1776947313726,
+      "type": "file"
+    },
+    {
+      "path": "docs/superpowers/specs/2026-04-23-historical-trends-ui-design.md",
+      "accessCount": 2,
+      "lastAccessed": 1776916189303,
+      "type": "file"
+    },
+    {
+      "path": "api/omlx.go",
+      "accessCount": 2,
+      "lastAccessed": 1776916235329,
+      "type": "file"
+    },
+    {
+      "path": "docs/superpowers/plans/2026-04-23-historical-trends-ui-plan.md",
+      "accessCount": 2,
+      "lastAccessed": 1776916624694,
+      "type": "file"
+    },
+    {
+      "path": "config.json",
+      "accessCount": 2,
+      "lastAccessed": 1776918736431,
+      "type": "file"
+    },
+    {
+      "path": "collector/metrics_test.go",
+      "accessCount": 2,
+      "lastAccessed": 1776920391264,
+      "type": "file"
+    },
+    {
+      "path": "README.md",
+      "accessCount": 1,
+      "lastAccessed": 1776914268317,
+      "type": "file"
+    },
+    {
+      "path": "go.mod",
+      "accessCount": 1,
+      "lastAccessed": 1776914672729,
+      "type": "file"
+    },
+    {
+      "path": "collector/memory.go",
+      "accessCount": 1,
+      "lastAccessed": 1776916220787,
+      "type": "file"
+    },
+    {
+      "path": "collector/openclaw.go",
+      "accessCount": 1,
+      "lastAccessed": 1776916227818,
+      "type": "file"
+    },
+    {
+      "path": "collector/disk.go",
+      "accessCount": 1,
+      "lastAccessed": 1776916227834,
+      "type": "file"
+    },
+    {
+      "path": "collector/power.go",
+      "accessCount": 1,
+      "lastAccessed": 1776916227892,
+      "type": "file"
+    },
+    {
+      "path": "api/system.go",
+      "accessCount": 1,
+      "lastAccessed": 1776916235220,
+      "type": "file"
+    },
+    {
+      "path": "collector/cache.go",
+      "accessCount": 1,
+      "lastAccessed": 1776916235274,
+      "type": "file"
+    },
+    {
+      "path": "docs/superpowers/specs/2026-04-23-system-monitor-tui-design.md",
+      "accessCount": 1,
+      "lastAccessed": 1776946375372,
+      "type": "file"
+    },
+    {
+      "path": "docs/superpowers/plans/2026-04-23-system-monitor-tui.md",
+      "accessCount": 1,
+      "lastAccessed": 1776946572574,
+      "type": "file"
+    },
+    {
+      "path": "requirements.txt",
+      "accessCount": 1,
+      "lastAccessed": 1776946619874,
+      "type": "file"
+    },
+    {
+      "path": "main.py",
+      "accessCount": 1,
+      "lastAccessed": 1776946979936,
+      "type": "file"
+    }
+  ],
+  "userDirectives": []
+}

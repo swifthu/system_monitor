@@ -5,8 +5,8 @@ class MetricCard(Static):
     """A card widget displaying a metric with value and optional progress bar."""
 
     def __init__(self, title: str, value: str, color: str = "white",
-                 bar_value: float = None, subtitle: str = None):
-        super().__init__()
+                 bar_value: float = None, subtitle: str = None, id: str = None):
+        super().__init__(id=id)
         self._title = title
         self._value = value
         self._color = color

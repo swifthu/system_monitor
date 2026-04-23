@@ -139,7 +139,25 @@ body {
   padding: 24px;
 }
 
-/* Glass card */
+/* Card (original class used in HTML) */
+.card {
+  background: var(--card-bg);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  border: 1px solid var(--card-border);
+  border-radius: 16px;
+  box-shadow: var(--shadow);
+  padding: 20px;
+  transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.card:hover {
+  transform: translateY(-2px);
+  border-color: var(--accent);
+  box-shadow: var(--shadow), 0 0 20px var(--accent-glow);
+}
+
+/* Also style .glass-card the same way */
 .glass-card {
   background: var(--card-bg);
   backdrop-filter: blur(20px) saturate(180%);
@@ -157,7 +175,13 @@ body {
   box-shadow: var(--shadow), 0 0 20px var(--accent-glow);
 }
 
-/* Grid */
+/* Grid (original class used in HTML) */
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 16px;
+}
+
 .metrics-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
@@ -310,7 +334,7 @@ canvas {
 
 <!-- Tabs -->
 <div class="tabs">
-  <div class="tab" data-tab="dashboard">DASHBOARD</div>
+  <div class="tab active" data-tab="dashboard">DASHBOARD</div>
   <div class="tab" data-tab="system">SYSTEM</div>
   <div class="tab" data-tab="oml">oMLX</div>
   <div class="tab" data-tab="api">QUOTA</div>
@@ -364,7 +388,7 @@ canvas {
 </div>
 
 <!-- SYSTEM -->
-<div id="tab-system" class="tab-panel active">
+<div id="tab-system" class="tab-panel">
   <div class="grid">
     <!-- CPU -->
     <div class="card cpu">
