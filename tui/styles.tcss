@@ -1,0 +1,29 @@
+Screen {
+    background: $surface;
+}
+
+MetricCard {
+    height: auto;
+    min-width: 28;
+    max-width: 36;
+    border: solid $border;
+    border-radius: 8px;
+    padding: 1 2;
+    margin: 0 1;
+}
+
+MetricCard > .card-title {
+    text-style: bold;
+    color: $text-muted;
+    width: 100%;
+}
+
+MetricCard > .card-value {
+    width: 100%;
+    text-style: bold;
+    color: $text;
+}
+
+MetricCard > .card-bar {
+    width: 100%;
+}
