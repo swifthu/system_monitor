@@ -583,6 +583,199 @@ canvas {
 <footer>Auto-refresh <span id="footer-interval">2</span>s &nbsp;·&nbsp; Source: Go Backend &nbsp;·&nbsp; <span class="live-dot"></span>Live</footer>
 
 <script>
+// ========== Canvas Chart Library ==========
+class LineChart {
+    constructor(canvas, config) {
+        this.canvas = canvas;
+        this.ctx = canvas.getContext('2d');
+        this.config = {
+            color: '#58a6ff',
+            fillColor: 'rgba(88, 166, 255, 0.15)',
+            unit: '',
+            max: undefined,
+            min: 0,
+            animated: true,
+            ...config
+        };
+        this.data = [];
+        this.animationProgress = 0;
+        this.animationFrame = null;
+    }
+
+    setData(points) {
+        this.data = points || [];
+        if (this.config.animated) {
+            this.animateIn();
+        } else {
+            this.draw(1);
+        }
+    }
+
+    animateIn() {
+        if (this.animationFrame) cancelAnimationFrame(this.animationFrame);
+        this.animationProgress = 0;
+        const startTime = performance.now();
+        const duration = 300;
+
+        const step = (now) => {
+            this.animationProgress = Math.min((now - startTime) / duration, 1);
+            this.draw(this.easeOut(this.animationProgress));
+            if (this.animationProgress < 1) {
+                this.animationFrame = requestAnimationFrame(step);
+            }
+        };
+        this.animationFrame = requestAnimationFrame(step);
+    }
+
+    easeOut(t) {
+        return 1 - Math.pow(1 - t, 3);
+    }
+
+    draw(progress) {
+        const { canvas, ctx, config, data } = this;
+        const dpr = window.devicePixelRatio || 1;
+        const rect = canvas.getBoundingClientRect();
+
+        canvas.width = rect.width * dpr;
+        canvas.height = rect.height * dpr;
+        ctx.scale(dpr, dpr);
+
+        const W = rect.width;
+        const H = rect.height;
+        const padding = { top: 10, right: 10, bottom: 24, left: 40 };
+        const chartW = W - padding.left - padding.right;
+        const chartH = H - padding.top - padding.bottom;
+
+        ctx.clearRect(0, 0, W, H);
+
+        if (data.length < 2) {
+            ctx.fillStyle = config.color;
+            ctx.font = '12px -apple-system, sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText('Not enough data', W / 2, H / 2);
+            return;
+        }
+
+        let max = config.max;
+        let min = config.min;
+        if (max === undefined) {
+            max = Math.max(...data.map(d => d.value));
+            if (max === min) max = min + 1;
+        }
+
+        ctx.strokeStyle = 'rgba(255,255,255,0.06)';
+        ctx.lineWidth = 1;
+        ctx.font = '10px -apple-system, sans-serif';
+        ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--text-muted').trim() || '#8b949e';
+        ctx.textAlign = 'right';
+
+        for (let i = 0; i <= 4; i++) {
+            const y = padding.top + (chartH / 4) * i;
+            const val = max - ((max - min) / 4) * i;
+            ctx.beginPath();
+            ctx.moveTo(padding.left, y);
+            ctx.lineTo(W - padding.right, y);
+            ctx.stroke();
+            ctx.fillText(val.toFixed(1) + config.unit, padding.left - 6, y + 3);
+        }
+
+        if (data.length > 0) {
+            ctx.textAlign = 'center';
+            const first = new Date(data[0].timestamp * 1000);
+            const last = new Date(data[data.length - 1].timestamp * 1000);
+            ctx.fillText(this.formatTime(first), padding.left, H - 4);
+            ctx.fillText(this.formatTime(last), W - padding.right, H - 4);
+        }
+
+        const pointsToDraw = data.slice(0, Math.ceil(data.length * progress));
+        if (pointsToDraw.length === 0) return;
+
+        const getX = (i) => padding.left + (i / (data.length - 1)) * chartW;
+        const getY = (v) => padding.top + ((max - v) / (max - min)) * chartH;
+
+        const gradient = ctx.createLinearGradient(0, padding.top, 0, padding.top + chartH);
+        gradient.addColorStop(0, config.fillColor);
+        gradient.addColorStop(1, 'transparent');
+
+        ctx.beginPath();
+        pointsToDraw.forEach((d, i) => {
+            const x = getX(i);
+            const y = getY(d.value);
+            if (i === 0) {
+                ctx.moveTo(x, y);
+            } else {
+                const prev = pointsToDraw[i - 1];
+                const prevX = getX(i - 1);
+                const cpX = (prevX + x) / 2;
+                ctx.bezierCurveTo(cpX, getY(prev.value), cpX, y, x, y);
+            }
+        });
+
+        const lastX = getX(pointsToDraw.length - 1);
+        const firstX = getX(0);
+        ctx.lineTo(lastX, padding.top + chartH);
+        ctx.lineTo(firstX, padding.top + chartH);
+        ctx.closePath();
+        ctx.fillStyle = gradient;
+        ctx.fill();
+
+        ctx.beginPath();
+        pointsToDraw.forEach((d, i) => {
+            const x = getX(i);
+            const y = getY(d.value);
+            if (i === 0) {
+                ctx.moveTo(x, y);
+            } else {
+                const prev = pointsToDraw[i - 1];
+                const prevX = getX(i - 1);
+                const cpX = (prevX + x) / 2;
+                ctx.bezierCurveTo(cpX, getY(prev.value), cpX, y, x, y);
+            }
+        });
+        ctx.strokeStyle = config.color;
+        ctx.lineWidth = 2;
+        ctx.stroke();
+
+        if (progress >= 1 && pointsToDraw.length > 0) {
+            const last = pointsToDraw[pointsToDraw.length - 1];
+            const x = getX(pointsToDraw.length - 1);
+            const y = getY(last.value);
+
+            ctx.beginPath();
+            ctx.arc(x, y, 4, 0, Math.PI * 2);
+            ctx.fillStyle = config.color;
+            ctx.fill();
+            ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--bg').trim() || '#0d1117';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+
+            const text = last.value.toFixed(1) + config.unit;
+            ctx.font = '11px -apple-system, sans-serif';
+            const textW = ctx.measureText(text).width;
+            const tx = Math.min(x - textW / 2, W - padding.right - textW - 8);
+            const ty = y - 28;
+
+            ctx.fillStyle = 'rgba(0,0,0,0.8)';
+            ctx.beginPath();
+            ctx.roundRect(tx - 4, ty - 10, textW + 8, 18, 4);
+            ctx.fill();
+
+            ctx.fillStyle = '#fff';
+            ctx.textAlign = 'left';
+            ctx.fillText(text, tx, ty + 4);
+        }
+    }
+
+    formatTime(date) {
+        return date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
+    }
+
+    resize() {
+        if (this.animationFrame) cancelAnimationFrame(this.animationFrame);
+        this.draw(1);
+    }
+}
+
 // ========== Theme Management ==========
 function initTheme() {
     const saved = localStorage.getItem('theme') || 'dark';
