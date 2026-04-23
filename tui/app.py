@@ -172,25 +172,22 @@ class SystemMonitorApp(App):
                     return f"reset in {h}h {m}m"
 
                 if right:
-                    # Left model
-                    lines.append(f"[cyan]{left_name}[/]")
-                    if left_total > 0:
-                        lines.append(f"[{make_bar(left_pct)}] {left_remaining}/{left_total}")
-                    else:
-                        lines.append("[dim]unlimited[/]")
-                    reset_str = format_reset_time(left_remains_time)
-                    if reset_str:
-                        lines.append(f"[dim]{reset_str}[/]")
+                    # Row 1: Model names (aligned to 45 chars)
+                    left_line = f"[cyan]{left_name}[/]"
+                    right_line = f"[cyan]{right_name}[/]"
+                    lines.append(f"{left_line:<{name_col_width}} {right_line}")
 
-                    # Right model (aligned to column)
-                    lines.append(f"{'[cyan]' + right_name + '[/]':<{name_col_width}}")
-                    if right_total > 0:
-                        lines.append(f"{'[' + make_bar(right_pct) + '] ' + str(right_remaining) + '/' + str(right_total):<{bar_col_width}}")
-                    else:
-                        lines.append(f"{'[dim]unlimited[/]':<{bar_col_width}}")
-                    reset_str = format_reset_time(right_remains_time)
-                    if reset_str:
-                        lines.append(f"[dim]{reset_str}[/]")
+                    # Row 2: Progress bars (aligned to 36 chars)
+                    left_bar = f"[{make_bar(left_pct)}] {left_remaining}/{left_total}" if left_total > 0 else "[dim]unlimited[/]"
+                    right_bar = f"[{make_bar(right_pct)}] {right_remaining}/{right_total}" if right_total > 0 else "[dim]unlimited[/]"
+                    lines.append(f"{left_bar:<{bar_col_width}} {right_bar}")
+
+                    # Row 3: Reset time (aligned to 45 chars)
+                    left_reset = format_reset_time(left_remains_time)
+                    right_reset = format_reset_time(right_remains_time)
+                    lines.append(f"{'[dim]' + left_reset + '[/]':<{name_col_width}} {'[dim]' + right_reset + '[/]'}")
+
+                    lines.append("")  # blank line between model pairs
                 else:
                     # Only left model
                     lines.append(f"[cyan]{left_name}[/]")
