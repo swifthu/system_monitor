@@ -148,8 +148,10 @@ class SystemMonitorApp(App):
                     mins = int((remains_time % 3600000) // 60000)
                     lines.append(f"[bold {c['quota']}]MiniMax Quota:[/]  [dim]reset in {hours}h {mins}m[/]\n")
 
-            # Two-column grid layout
-            col_width = 42
+            # Two-column grid: names on one line, bars on the next
+            name_col_width = 36
+            bar_col_width = 22
+
             for i in range(0, len(models), 2):
                 left = models[i]
                 right = models[i + 1] if i + 1 < len(models) else None
@@ -166,28 +168,25 @@ class SystemMonitorApp(App):
                 right_remaining = right_total - right_used
                 right_pct = (right_used / right_total * 100) if right_total > 0 else 0
 
-                # Format left column
-                if left_total > 0:
-                    left_bar = make_bar(left_pct)
-                    left_text = f"[cyan]{left_name:<28}[/] {left_bar} {left_remaining}/{left_total}"
-                else:
-                    left_text = f"[cyan]{left_name:<28}[/]  [dim]unlimited[/]"
-
-                # Format right column
+                # Line 1: Model names
                 if right:
-                    if right_total > 0:
-                        right_bar = make_bar(right_pct)
-                        right_text = f"[cyan]{right_name:<28}[/] {right_bar} {right_remaining}/{right_total}"
-                    else:
-                        right_text = f"[cyan]{right_name:<28}[/]  [dim]unlimited[/]"
-                else:
-                    right_text = ""
+                    left_line = f"[cyan]{left_name}[/]"
+                    right_line = f"[cyan]{right_name}[/]"
+                    lines.append(f"{left_line:<{name_col_width}} {right_line}")
 
-                # Combine with proper spacing
-                if right_text:
-                    lines.append(f"{left_text:<{col_width}} {right_text}")
+                    # Line 2: Progress bars
+                    left_bar = f"[{make_bar(left_pct)}] {left_remaining}/{left_total}" if left_total > 0 else "[dim]unlimited[/]"
+                    right_bar = f"[{make_bar(right_pct)}] {right_remaining}/{right_total}" if right_total > 0 else "[dim]unlimited[/]"
+                    lines.append(f"{left_bar:<{bar_col_width}} {right_bar}")
+                    lines.append("")  # blank line between pairs
                 else:
-                    lines.append(left_text)
+                    # Only left model, center it
+                    lines.append(f"[cyan]{left_name}[/]")
+                    if left_total > 0:
+                        lines.append(f"[{make_bar(left_pct)}] {left_remaining}/{left_total}")
+                    else:
+                        lines.append("[dim]unlimited[/]")
+
         else:
             lines.append("[dim]MiniMax quota unavailable[/]")
 
