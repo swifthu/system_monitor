@@ -1,10 +1,10 @@
 """System Monitor TUI - Main App."""
 from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual.containers import Container, Horizontal
+from textual.containers import Container
 from textual.widgets import Header, Footer, TabbedContent, TabPane, Static
 
-from api_client import APIClient, SystemSnapshot
+from api_client import APIClient
 from tui.widgets import MetricCard
 
 # Color scheme per metric
@@ -111,54 +111,56 @@ class SystemMonitorApp(App):
         if not snapshot:
             return
 
+        # Calculate CPU percent from cores (average total percent)
+        cpu_percent = 0.0
+        if snapshot.cpu_cores:
+            cpu_percent = sum(c.total_percent for c in snapshot.cpu_cores) / len(snapshot.cpu_cores)
+
         # Update CPU card
         self.query_one("#cpu-card", MetricCard).update(
-            f"{snapshot.cpu_percent:.1f}%",
-            bar_value=snapshot.cpu_percent
+            f"{cpu_percent:.1f}%",
+            bar_value=cpu_percent
         )
 
         # Update Memory card
-        mem_percent = (snapshot.memory_used / snapshot.memory_total * 100) if snapshot.memory_total > 0 else 0
         self.query_one("#mem-card", MetricCard).update(
             f"{format_bytes(snapshot.memory_used)} / {format_bytes(snapshot.memory_total)}",
-            bar_value=mem_percent
+            bar_value=snapshot.memory_used_percent
         )
 
-        # Update Network card
+        # Update Network card - aggregate all active interfaces
+        total_rx = sum(n.rx_rate for n in snapshot.network)
+        total_tx = sum(n.tx_rate for n in snapshot.network)
         self.query_one("#net-card", MetricCard).update(
-            f"↓ {format_rate(snapshot.network_rx)}\n↑ {format_rate(snapshot.network_tx)}"
+            f"↓ {format_rate(total_rx)}\n↑ {format_rate(total_tx)}"
         )
 
-        # Update Battery card (mounted dynamically if battery present)
-        if snapshot.battery_percent >= 0:
+        # Update Battery/Power card (mounted dynamically if power data present)
+        if snapshot.power_percent > 0 or snapshot.power_time_remaining > 0:
             time_str = ""
-            if snapshot.battery_time_remaining:
-                hours = snapshot.battery_time_remaining // 3600
-                mins = (snapshot.battery_time_remaining % 3600) // 60
+            if snapshot.power_time_remaining > 0:
+                hours = snapshot.power_time_remaining // 3600
+                mins = (snapshot.power_time_remaining % 3600) // 60
                 time_str = f" ⚡{hours}:{mins:02d}"
-            # Mount battery card if not already present
             if self.query_one("#bat-card", MetricCard, none_ok=True) is None:
                 bat_card = MetricCard("Battery", "--", METRIC_COLORS["battery"], id="bat-card")
                 self.query_one("#dashboard-grid").mount(bat_card, before=2)
             self.query_one("#bat-card", MetricCard).update(
-                f"{snapshot.battery_percent}%{time_str}",
-                bar_value=snapshot.battery_percent
+                f"{snapshot.power_percent:.0f}%{time_str}",
+                bar_value=snapshot.power_percent
             )
 
-        # Update GPU card
-        if snapshot.gpu_total > 0:
-            gpu_percent = (snapshot.gpu_power / snapshot.gpu_total * 100) if snapshot.gpu_total > 0 else 0
-            self.query_one("#gpu-card", MetricCard).update(
-                f"{snapshot.gpu_power:.0f}W / {snapshot.gpu_total:.0f}W",
-                bar_value=gpu_percent
-            )
-        elif snapshot.gpu_power > 0:
-            self.query_one("#gpu-card", MetricCard).update(f"{snapshot.gpu_power:.0f}W")
+        # Update GPU card (shows CPU+GPU combined power if available)
+        total_power = snapshot.cpu_power_w + snapshot.gpu_power_w
+        if total_power > 0:
+            self.query_one("#gpu-card", MetricCard).update(f"{total_power:.1f}W")
+        elif snapshot.cpu_power_w > 0:
+            self.query_one("#gpu-card", MetricCard).update(f"{snapshot.cpu_power_w:.1f}W")
 
         # Update Temperature card
-        if snapshot.temp_cpu > 0 or snapshot.temp_gpu > 0:
+        if snapshot.cpu_temp > 0 or snapshot.gpu_temp > 0:
             self.query_one("#temp-card", MetricCard).update(
-                f"CPU: {snapshot.temp_cpu:.0f}°C\nGPU: {snapshot.temp_gpu:.0f}°C"
+                f"CPU: {snapshot.cpu_temp:.0f}°C\nGPU: {snapshot.gpu_temp:.0f}°C"
             )
 
     def action_switch_tab_1(self):
