@@ -10,6 +10,7 @@ import (
 	"net/http/httputil"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -18,8 +19,9 @@ import (
 
 // Handler holds HTTP handler dependencies
 type Handler struct {
-	collector *collector.Collector
-	mux       *http.ServeMux
+	collector  *collector.Collector
+	metricsDB  *collector.MetricsDB // nil if metrics disabled
+	mux        *http.ServeMux
 }
 
 // OMLXResponse represents the OMLX API response format
@@ -37,9 +39,10 @@ type QuotaInfo struct {
 }
 
 // NewHandler creates a new HTTP handler
-func NewHandler(col *collector.Collector) http.Handler {
+func NewHandler(col *collector.Collector, metricsDB *collector.MetricsDB) http.Handler {
 	h := &Handler{
 		collector: col,
+		metricsDB: metricsDB,
 		mux:       http.NewServeMux(),
 	}
 
@@ -53,6 +56,8 @@ func NewHandler(col *collector.Collector) http.Handler {
 	h.mux.HandleFunc("/health", h.handleNotFound)
 	h.mux.HandleFunc("/", h.handleIndex)
 	h.mux.HandleFunc("/api/openclaw", h.handleOpenClaw)
+	h.mux.HandleFunc("/api/metrics/query", h.handleMetricsQuery)
+	h.mux.HandleFunc("/api/metrics/list", h.handleMetricsList)
 
 	return h
 }
@@ -401,6 +406,67 @@ func (h *Handler) handleOpenClaw(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(data)
+}
+
+// handleMetricsQuery returns time-series data
+// GET /api/metrics/query?metric=cpu_percent&from=ts&to=ts&source=system
+func (h *Handler) handleMetricsQuery(w http.ResponseWriter, r *http.Request) {
+	metric := r.URL.Query().Get("metric")
+	source := r.URL.Query().Get("source")
+	fromStr := r.URL.Query().Get("from")
+	toStr := r.URL.Query().Get("to")
+
+	if metric == "" || fromStr == "" || toStr == "" {
+		http.Error(w, "metric, from, to required", http.StatusBadRequest)
+		return
+	}
+
+	from, err := strconv.ParseInt(fromStr, 10, 64)
+	if err != nil {
+		http.Error(w, "invalid from", http.StatusBadRequest)
+		return
+	}
+	to, err := strconv.ParseInt(toStr, 10, 64)
+	if err != nil {
+		http.Error(w, "invalid to", http.StatusBadRequest)
+		return
+	}
+
+	if h.metricsDB == nil {
+		http.Error(w, "metrics not enabled", http.StatusServiceUnavailable)
+		return
+	}
+
+	points, err := h.metricsDB.QueryMetrics(metric, from, to, source)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"metric": metric,
+		"from":   from,
+		"to":     to,
+		"points": points,
+	})
+}
+
+// handleMetricsList returns all available metric names
+func (h *Handler) handleMetricsList(w http.ResponseWriter, r *http.Request) {
+	if h.metricsDB == nil {
+		http.Error(w, "metrics not enabled", http.StatusServiceUnavailable)
+		return
+	}
+
+	names, err := h.metricsDB.ListMetricNames()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"metrics": names,
+	})
 }
 
 // Config holds the application configuration

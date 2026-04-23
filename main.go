@@ -33,7 +33,8 @@ func main() {
 	col := collector.NewCollector(2 * time.Second)
 
 	// Create HTTP handler with collector
-	handler := api.NewHandler(col)
+	var metricsDB *collector.MetricsDB
+	handler := api.NewHandler(col, metricsDB)
 
 	// Create HTTP server
 	srv := &http.Server{
@@ -56,6 +57,7 @@ func main() {
 		if err != nil {
 			log.Printf("Metrics DB init failed: %v", err)
 		} else {
+			metricsDB = db // store for handler
 			if err := db.Purge(cfg.Metrics.RetentionDays); err != nil {
 				log.Printf("Metrics purge failed: %v", err)
 			}
