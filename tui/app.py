@@ -73,9 +73,8 @@ class SystemMonitorApp(App):
             MetricCard("Memory", "--", METRIC_COLORS["memory"], id="mem-card"),
             MetricCard("Network", "--", METRIC_COLORS["network"], id="net-card"),
         )
-        # Row 2: Battery, GPU, Temperature
+        # Row 2: GPU, Temperature (Battery added dynamically if present)
         grid.mount(
-            MetricCard("Battery", "--", METRIC_COLORS["battery"], id="bat-card"),
             MetricCard("GPU", "--", METRIC_COLORS["gpu"], id="gpu-card"),
             MetricCard("Temperature", "--", METRIC_COLORS["temperature"], id="temp-card"),
         )
@@ -130,13 +129,17 @@ class SystemMonitorApp(App):
             f"↓ {format_rate(snapshot.network_rx)}\n↑ {format_rate(snapshot.network_tx)}"
         )
 
-        # Update Battery card
+        # Update Battery card (mounted dynamically if battery present)
         if snapshot.battery_percent >= 0:
             time_str = ""
             if snapshot.battery_time_remaining:
                 hours = snapshot.battery_time_remaining // 3600
                 mins = (snapshot.battery_time_remaining % 3600) // 60
                 time_str = f" ⚡{hours}:{mins:02d}"
+            # Mount battery card if not already present
+            if self.query_one("#bat-card", MetricCard, none_ok=True) is None:
+                bat_card = MetricCard("Battery", "--", METRIC_COLORS["battery"], id="bat-card")
+                self.query_one("#dashboard-grid").mount(bat_card, before=2)
             self.query_one("#bat-card", MetricCard).update(
                 f"{snapshot.battery_percent}%{time_str}",
                 bar_value=snapshot.battery_percent
