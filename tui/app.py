@@ -139,18 +139,12 @@ class SystemMonitorApp(App):
         if quota and "model_remains" in quota:
             models = quota["model_remains"]
 
-            # Show first model's reset time as header
-            if models:
-                first = models[0]
-                remains_time = first.get("remains_time", 0)
-                if remains_time > 0:
-                    hours = int(remains_time // 3600000)
-                    mins = int((remains_time % 3600000) // 60000)
-                    lines.append(f"[bold {c['quota']}]MiniMax Quota:[/]  [dim]reset in {hours}h {mins}m[/]\n")
+            lines.append(f"[bold {c['quota']}]MiniMax Quota:[/]\n")
 
-            # Two-column grid: names on one line, bars on the next
-            name_col_width = 36
-            bar_col_width = 22
+            # Each model takes 3 rows: name, bar, reset time
+            # Two models side by side with aligned columns
+            name_col_width = 45
+            bar_col_width = 36
 
             for i in range(0, len(models), 2):
                 left = models[i]
@@ -161,33 +155,52 @@ class SystemMonitorApp(App):
                 left_used = left.get("current_interval_usage_count", 0)
                 left_remaining = left_total - left_used
                 left_pct = (left_used / left_total * 100) if left_total > 0 else 0
+                left_remains_time = left.get("remains_time", 0)
 
                 right_name = right.get("model_name", "unknown") if right else ""
                 right_total = right.get("current_interval_total_count", 0) if right else 0
                 right_used = right.get("current_interval_usage_count", 0) if right else 0
                 right_remaining = right_total - right_used
                 right_pct = (right_used / right_total * 100) if right_total > 0 else 0
+                right_remains_time = right.get("remains_time", 0) if right else 0
 
-                # Line 1: Model names
+                def format_reset_time(ms):
+                    if ms <= 0:
+                        return ""
+                    h = int(ms // 3600000)
+                    m = int((ms % 3600000) // 60000)
+                    return f"reset in {h}h {m}m"
+
                 if right:
-                    name_col_width = 45
-                    left_line = f"[cyan]{left_name}[/]"
-                    right_line = f"[cyan]{right_name}[/]"
-                    lines.append(f"{left_line:<{name_col_width}} {right_line}")
-
-                    # Line 2: Progress bars - fixed width for bar info
-                    bar_info_width = 36  # fixed width to align right bars
-                    left_bar = f"[{make_bar(left_pct)}] {left_remaining}/{left_total}" if left_total > 0 else "[dim]unlimited[/]"
-                    right_bar = f"[{make_bar(right_pct)}] {right_remaining}/{right_total}" if right_total > 0 else "[dim]unlimited[/]"
-                    lines.append(f"{left_bar:<{bar_info_width}} {right_bar}")
-                    lines.append("")  # blank line between pairs
-                else:
-                    # Only left model, center it
+                    # Left model
                     lines.append(f"[cyan]{left_name}[/]")
                     if left_total > 0:
                         lines.append(f"[{make_bar(left_pct)}] {left_remaining}/{left_total}")
                     else:
                         lines.append("[dim]unlimited[/]")
+                    reset_str = format_reset_time(left_remains_time)
+                    if reset_str:
+                        lines.append(f"[dim]{reset_str}[/]")
+
+                    # Right model (aligned to column)
+                    lines.append(f"{'[cyan]' + right_name + '[/]':<{name_col_width}}")
+                    if right_total > 0:
+                        lines.append(f"{'[' + make_bar(right_pct) + '] ' + str(right_remaining) + '/' + str(right_total):<{bar_col_width}}")
+                    else:
+                        lines.append(f"{'[dim]unlimited[/]':<{bar_col_width}}")
+                    reset_str = format_reset_time(right_remains_time)
+                    if reset_str:
+                        lines.append(f"[dim]{reset_str}[/]")
+                else:
+                    # Only left model
+                    lines.append(f"[cyan]{left_name}[/]")
+                    if left_total > 0:
+                        lines.append(f"[{make_bar(left_pct)}] {left_remaining}/{left_total}")
+                    else:
+                        lines.append("[dim]unlimited[/]")
+                    reset_str = format_reset_time(left_remains_time)
+                    if reset_str:
+                        lines.append(f"[dim]{reset_str}[/]")
 
         else:
             lines.append("[dim]MiniMax quota unavailable[/]")
