@@ -3,6 +3,7 @@ package collector
 import (
 	"bufio"
 	"context"
+	"fmt"
 	"log"
 	"os/exec"
 	"sync"
@@ -17,6 +18,101 @@ type Collector struct {
 	doneCh    chan struct{}
 	mu        sync.Mutex
 	macmon    *macmonProcess
+}
+
+// MetricsCollector periodically writes snapshots to SQLite
+type MetricsCollector struct {
+	db            *MetricsDB
+	collector    *Collector
+	writeInterval time.Duration
+	stopCh       chan struct{}
+	doneCh       chan struct{}
+}
+
+func NewMetricsCollector(col *Collector, db *MetricsDB, writeIntervalSec int) *MetricsCollector {
+	return &MetricsCollector{
+		db:            db,
+		collector:    col,
+		writeInterval: time.Duration(writeIntervalSec) * time.Second,
+		stopCh:       make(chan struct{}),
+		doneCh:       make(chan struct{}),
+	}
+}
+
+func (mc *MetricsCollector) Start(ctx context.Context) {
+	go func() {
+		defer close(mc.doneCh)
+		ticker := time.NewTicker(mc.writeInterval)
+		defer ticker.Stop()
+
+		// Write immediately on start
+		mc.writeSnapshot()
+
+		for {
+			select {
+			case <-ticker.C:
+				mc.writeSnapshot()
+			case <-mc.stopCh:
+				return
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+}
+
+func (mc *MetricsCollector) Stop() {
+	close(mc.stopCh)
+	<-mc.doneCh
+}
+
+func (mc *MetricsCollector) writeSnapshot() {
+	snap, ok := mc.collector.Cache().Get()
+	if !ok || snap == nil {
+		return
+	}
+
+	now := snap.Timestamp
+	if now == 0 {
+		now = time.Now().Unix()
+	}
+
+	var points []MetricPoint
+
+	// CPU aggregate (index 0)
+	if len(snap.CPU) > 0 {
+		cpu := snap.CPU[0]
+		points = append(points, MetricPoint{Timestamp: now, Source: "system", MetricName: "cpu_percent", Value: cpu.TotalPercent, Tags: "{}"})
+		points = append(points, MetricPoint{Timestamp: now, Source: "system", MetricName: "cpu_user", Value: cpu.User, Tags: "{}"})
+		points = append(points, MetricPoint{Timestamp: now, Source: "system", MetricName: "cpu_system", Value: cpu.System, Tags: "{}"})
+		points = append(points, MetricPoint{Timestamp: now, Source: "system", MetricName: "cpu_idle", Value: cpu.Idle, Tags: "{}"})
+	}
+
+	// Memory
+	points = append(points, MetricPoint{Timestamp: now, Source: "system", MetricName: "memory_used", Value: float64(snap.Memory.Used), Tags: "{}"})
+	points = append(points, MetricPoint{Timestamp: now, Source: "system", MetricName: "memory_free", Value: float64(snap.Memory.Free), Tags: "{}"})
+	points = append(points, MetricPoint{Timestamp: now, Source: "system", MetricName: "memory_percent", Value: snap.Memory.UsedPercent, Tags: "{}"})
+
+	// Power
+	points = append(points, MetricPoint{Timestamp: now, Source: "system", MetricName: "gpu_power", Value: snap.Power.GPUPower, Tags: "{}"})
+	points = append(points, MetricPoint{Timestamp: now, Source: "system", MetricName: "cpu_power", Value: snap.Power.CPUPower, Tags: "{}"})
+	points = append(points, MetricPoint{Timestamp: now, Source: "system", MetricName: "ram_power", Value: snap.Power.RAMPower, Tags: "{}"})
+	points = append(points, MetricPoint{Timestamp: now, Source: "system", MetricName: "sys_power", Value: snap.Power.SYSPower, Tags: "{}"})
+
+	// Network — use first non-loopback interface or aggregate
+	for _, n := range snap.Network {
+		tags := fmt.Sprintf(`{"iface":"%s"}`, n.Interface)
+		points = append(points, MetricPoint{Timestamp: now, Source: "system", MetricName: "network_rx_bytes", Value: float64(n.RxBytes), Tags: tags})
+		points = append(points, MetricPoint{Timestamp: now, Source: "system", MetricName: "network_tx_bytes", Value: float64(n.TxBytes), Tags: tags})
+	}
+
+	// Disk
+	for _, d := range snap.Disk {
+		tags := fmt.Sprintf(`{"path":"%s"}`, d.Path)
+		points = append(points, MetricPoint{Timestamp: now, Source: "system", MetricName: "disk_used_percent", Value: d.UsedPercent, Tags: tags})
+	}
+
+	mc.db.BatchWrite(points)
 }
 
 // macmonProcess manages the macmon subprocess state machine
