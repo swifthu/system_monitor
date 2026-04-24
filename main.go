@@ -2,6 +2,9 @@ package main
 
 import (
 	"context"
+	"encoding/json"
+	"flag"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -17,6 +20,16 @@ import (
 func main() {
 	log.SetFlags(0)
 	log.SetOutput(os.Stdout)
+
+	// Parse flags
+	snapshotFlag := flag.Bool("snapshot", false, "Take a single snapshot and output JSON")
+	flag.Parse()
+
+	// Snapshot mode: collect once and exit
+	if *snapshotFlag {
+		runSnapshotMode()
+		return
+	}
 
 	// Load configuration
 	cfg, err := config.Load()
@@ -92,4 +105,37 @@ func main() {
 	}
 
 	log.Println("Shutdown complete")
+}
+
+// runSnapshotMode collects a single snapshot and outputs JSON to stdout
+func runSnapshotMode() {
+	col := collector.NewCollector(2 * time.Second)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go col.Start(ctx)
+
+	// Wait for first snapshot (cache has data)
+	start := time.Now()
+	timeout := 10 * time.Second
+	var snap *collector.SystemSnapshot
+	for time.Since(start) < timeout {
+		if s, ok := col.Cache().Get(); ok && s != nil {
+			snap = s
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+
+	if snap == nil {
+		fmt.Fprintf(os.Stderr, "Error: timed out waiting for snapshot\n")
+		os.Exit(1)
+	}
+
+	// Output JSON to stdout
+	enc := json.NewEncoder(os.Stdout)
+	enc.SetIndent("", "  ")
+	if err := enc.Encode(snap); err != nil {
+		fmt.Fprintf(os.Stderr, "Error encoding snapshot: %v\n", err)
+		os.Exit(1)
+	}
 }

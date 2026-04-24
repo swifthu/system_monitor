@@ -48,7 +48,7 @@ class SystemMonitorApp(App):
 
     def __init__(self):
         super().__init__()
-        self.api = APIClient()
+        self.api = APIClient(inline=True)
         self.refresh_interval = 2.0
         self.snapshot = None
 

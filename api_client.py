@@ -1,4 +1,5 @@
 """API client for System Monitor Go backend."""
+import os
 import httpx
 import subprocess
 import json
@@ -47,16 +48,33 @@ class SystemSnapshot:
     network: List[NetworkInterface]
 
 class APIClient:
-    def __init__(self, base_url: str = BASE_URL):
+    def __init__(self, base_url: str = BASE_URL, inline: bool = False):
         self.base_url = base_url
+        self.inline = inline
         self._client = httpx.Client(timeout=5.0)
 
     async def get_snapshot(self) -> Optional[SystemSnapshot]:
         try:
-            resp = self._client.get(f"{self.base_url}/api/snapshot")
-            resp.raise_for_status()
-            data = resp.json()
-            return parse_snapshot(data)
+            if self.inline:
+                result = subprocess.run(
+                    ["./server", "--snapshot"],
+                    capture_output=True,
+                    text=True,
+                    cwd=os.path.dirname(os.path.abspath(__file__)) or ".",
+                )
+                if result.returncode != 0:
+                    return None
+                # Skip log output before JSON
+                json_start = result.stdout.find('{')
+                if json_start < 0:
+                    return None
+                data = json.loads(result.stdout[json_start:])
+                return parse_snapshot(data)
+            else:
+                resp = self._client.get(f"{self.base_url}/api/snapshot")
+                resp.raise_for_status()
+                data = resp.json()
+                return parse_snapshot(data)
         except Exception:
             return None
 
