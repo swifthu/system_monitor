@@ -7,12 +7,13 @@ from api_client import APIClient, get_mmx_quota
 
 METRIC_COLORS = {
     "cpu": "cyan",
-    "memory": "blue",
+    "memory": "bright_blue",
     "network": "green",
     "power": "magenta",
     "temperature": "red",
     "disk": "yellow",
     "quota": "yellow",
+    "banwagon": "red",
 }
 
 def format_bytes(bytes_val: float) -> str:
@@ -40,7 +41,7 @@ class SystemMonitorApp(App):
         Binding("q", "quit", "Quit"),
         Binding("r", "refresh", "Refresh"),
         Binding("1", "switch_tab_1", "SYSTEM", show=False),
-        Binding("2", "switch_tab_2", "AGENTS", show=False),
+        Binding("2", "switch_tab_2", "Quota", show=False),
     ]
 
     CSS_PATH = "styles.tcss"
@@ -56,7 +57,7 @@ class SystemMonitorApp(App):
         with TabbedContent():
             with TabPane("SYSTEM", id="system"):
                 yield Static("", id="system-info")
-            with TabPane("AGENTS", id="agents"):
+            with TabPane("Quota", id="agents"):
                 yield Static("", id="agents-info")
         yield Footer()
 
@@ -82,48 +83,67 @@ class SystemMonitorApp(App):
         lines = []
         c = METRIC_COLORS
 
-        # === Header ===
-        lines.append("[bold]System Monitor[/]  [dim]Press 1/2 to switch tabs[/]\n")
+        # Layout constants (match AGENTS tab)
+        name_col_width = 45
+        bar_col_width = 36
 
-        # === CPU Section ===
+        # === Row 0: Header ===
+        lines.append("[bold]System Monitor[/]  [dim]Press 1/2 to switch tabs[/]")
+
+        # === Row 1-2: CPU | Memory ===
         cpu_percent = 0.0
         if snapshot.cpu_cores:
             cpu_percent = sum(100 - core.idle for core in snapshot.cpu_cores) / len(snapshot.cpu_cores)
-        lines.append(f"[bold {c['cpu']}]CPU:[/]  [bold]{cpu_percent:.1f}%[/]  [{make_bar(cpu_percent)}]")
 
-        # === Memory Section ===
-        lines.append(f"[bold {c['memory']}]Memory:[/]  [bold]{format_bytes(snapshot.memory_used)} / {format_bytes(snapshot.memory_total)}[/]")
-        lines.append(f"         [{make_bar(snapshot.memory_used_percent)}]  {snapshot.memory_used_percent:.1f}%")
+        mem_pct = snapshot.memory_used_percent
 
-        # === Network Section ===
-        total_rx = sum(n.rx_rate for n in snapshot.network)
-        total_tx = sum(n.tx_rate for n in snapshot.network)
-        lines.append(f"[bold {c['network']}]Network:[/]  ↓ {format_rate(total_rx)}  ↑ {format_rate(total_tx)}")
-
-        # === Power Section ===
-        if snapshot.power_percent > 1:
-            lines.append(f"[bold {c['power']}]Power:[/]  [bold]{snapshot.power_percent:.0f}%[/]  [{make_bar(min(snapshot.power_percent, 100))}]")
-
-        # === Temperature Section ===
-        if snapshot.cpu_temp > 0:
-            lines.append(f"[bold {c['temperature']}]Temperature:[/]  CPU: {snapshot.cpu_temp:.0f}°C  GPU: {snapshot.gpu_temp:.0f}°C")
+        bar_left = f"[{make_bar(cpu_percent)}] {cpu_percent:.1f}%"
+        bar_right = f"[{make_bar(mem_pct)}] {mem_pct:.1f}%"
+        lines.append(f"[bold {c['cpu']}]CPU[/]" + " " * (name_col_width - 4) + f"[bold {c['memory']}]Memory[/]")
+        lines.append(bar_left + " " * (name_col_width - len(bar_left)) + bar_right)
 
         lines.append("")
 
-        # === Disk Section ===
+        # === Network | Disk (titles on same line) ===
+        # rx_rate/tx_rate from API are in MB/s, convert to bytes/s for format_rate
+        total_rx = sum(n.rx_rate * 1024 * 1024 for n in snapshot.network)
+        total_tx = sum(n.tx_rate * 1024 * 1024 for n in snapshot.network)
+
+        disk_summary = ""
         for d in snapshot.disk:
-            lines.append(f"[bold {c['disk']}]Disk:[/]  [bold]{d.path}[/]")
-            lines.append(f"        {format_bytes(d.used)} / {format_bytes(d.total)}")
-            lines.append(f"        [{make_bar(d.used_percent)}]  {d.used_percent:.1f}%")
+            disk_summary += f" [dim]{format_bytes(d.used)}/{format_bytes(d.total)}[/]"
+
+        lines.append(f"[bold {c['network']}]Network[/]" + " " * (name_col_width - 7) + f"[bold {c['disk']}]Disk[/][dim]{disk_summary}[/]")
+
+        left_bar = f"↓ {format_rate(total_rx)}  ↑ {format_rate(total_tx)}"
+        disk_bars = ""
+        for d in snapshot.disk:
+            disk_bars += f"[{make_bar(d.used_percent)}] {d.used_percent:.1f}%  "
+        right_bar = disk_bars.strip()
+        lines.append(left_bar + " " * (name_col_width - len(left_bar)) + right_bar)
 
         lines.append("")
 
-        # === CPU Cores Section ===
-        if snapshot.cpu_cores:
-            lines.append(f"[bold {c['cpu']}]CPU Cores:[/]")
-            for i, core in enumerate(snapshot.cpu_cores):
-                used = 100 - core.idle
-                lines.append(f"  Core {i}: [{make_bar(used)}] {used:.1f}%")
+        # === Power | Temperature (title on same line, values below) ===
+        cpu_w = snapshot.cpu_power_w
+        gpu_w = snapshot.gpu_power_w
+
+        temp_parts = []
+        if snapshot.cpu_temp > 0:
+            temp_parts.append(f"CPU: {snapshot.cpu_temp:.0f}°C")
+        if snapshot.gpu_temp > 0:
+            temp_parts.append(f"GPU: {snapshot.gpu_temp:.0f}°C")
+
+        total_w = snapshot.power_percent
+        power_parts = []
+        if cpu_w > 0:
+            power_parts.append(f"CPU: {cpu_w:.1f}W")
+        if gpu_w > 0:
+            power_parts.append(f"GPU: {gpu_w:.1f}W")
+        power_val = "  " + "  ".join(power_parts) + f"  (All: {total_w:.1f}W)"
+        temp_val = "  " + "  ".join(temp_parts)
+        lines.append(f"[bold {c['power']}]Power[/]" + " " * (name_col_width - 5) + f"[bold {c['temperature']}]Temperature[/]")
+        lines.append(power_val + " " * (name_col_width - len(power_val)) + temp_val)
 
         self.query_one("#system-info", Static).update("\n".join(lines))
 
@@ -132,7 +152,7 @@ class SystemMonitorApp(App):
         lines = []
         c = METRIC_COLORS
 
-        lines.append("[bold]Agent Status[/]  [dim]Press 1/2 to switch tabs[/]\n")
+        lines.append("[bold]QUOTA[/]  [dim]Press 1/2 to switch tabs[/]\n")
 
         # MiniMax Quota via mmx CLI
         quota = get_mmx_quota()
@@ -201,6 +221,31 @@ class SystemMonitorApp(App):
 
         else:
             lines.append("[dim]MiniMax quota unavailable[/]")
+
+        # Banwagon Quota
+        try:
+            import httpx
+            resp = httpx.get(f"{self.api.base_url}/api/banwagon", timeout=5)
+            if resp.status_code == 200:
+                bw = resp.json()
+                lines.append("")
+                bw_location = bw.get("location", "Unknown")
+                bw_total_gb = bw.get("total_gb", 0)
+                bw_used_gb = bw.get("used_gb", 0)
+                bw_next_reset = bw.get("data_next_reset", 0)
+
+                lines.append(f"[bold {c['banwagon']}]Banwagon[/]  [dim]{bw_location}[/]")
+                bw_pct = (bw_used_gb / bw_total_gb * 100) if bw_total_gb > 0 else 0
+                lines.append(f"[{make_bar(bw_pct)}] {bw_used_gb:.1f}/{bw_total_gb} GB")
+
+                if bw_next_reset > 0:
+                    from datetime import datetime
+                    reset_date = datetime.fromtimestamp(bw_next_reset)
+                    now = datetime.now()
+                    days_left = (reset_date - now).days
+                    lines.append(f"[dim]reset in {days_left} days[/]")
+        except Exception:
+            pass
 
         self.query_one("#agents-info", Static).update("\n".join(lines))
 

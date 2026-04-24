@@ -31,6 +31,9 @@ func CollectNetwork(ifaces []string) ([]NetworkInfo, error) {
 	var result []NetworkInfo
 	lines := strings.Split(string(out), "\n")
 
+	// Track seen interfaces to avoid duplicates (netstat -ib outputs multiple lines per interface)
+	seen := make(map[string]bool)
+
 	// Skip header line
 	for i := 1; i < len(lines); i++ {
 		line := strings.TrimSpace(lines[i])
@@ -45,6 +48,11 @@ func CollectNetwork(ifaces []string) ([]NetworkInfo, error) {
 
 		name := fields[0]
 		if ignoredInterfaces[name] {
+			continue
+		}
+
+		// Skip duplicate interface names (netstat -ib outputs multiple rows per interface)
+		if seen[name] {
 			continue
 		}
 
@@ -78,6 +86,7 @@ func CollectNetwork(ifaces []string) ([]NetworkInfo, error) {
 			info.TxBytes = v
 		}
 
+		seen[name] = true
 		result = append(result, info)
 	}
 

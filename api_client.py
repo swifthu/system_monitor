@@ -105,7 +105,7 @@ def parse_snapshot(data: dict) -> SystemSnapshot:
         memory_available=memory.get("available", 0),
         memory_used_percent=memory.get("used_percent", 0),
         cpu_cores=cpu_cores,
-        power_percent=power.get("percent", 0) * 100,
+        power_percent=power.get("percent", 0),
         power_charge=power.get("charge", False),
         power_time_remaining=power.get("time_remaining", 0),
         cpu_power_w=power.get("cpu_power_w", 0),
