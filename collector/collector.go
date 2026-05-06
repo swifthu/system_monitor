@@ -3,6 +3,7 @@ package collector
 import (
 	"bufio"
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"os/exec"
@@ -12,12 +13,13 @@ import (
 
 // Collector is the main collector interface
 type Collector struct {
-	cache     *Cache
-	interval  time.Duration
-	stopCh    chan struct{}
-	doneCh    chan struct{}
-	mu        sync.Mutex
-	macmon    *macmonProcess
+	cache       *Cache
+	interval    time.Duration
+	stopCh      chan struct{}
+	doneCh      chan struct{}
+	mu          sync.Mutex
+	macmon      *macmonProcess
+	broadcaster *Broadcaster // SSE broadcaster for streaming
 }
 
 // MetricsCollector periodically writes snapshots to SQLite
@@ -156,6 +158,13 @@ func (c *Collector) Cache() *Cache {
 	return c.cache
 }
 
+// SetBroadcaster sets the SSE broadcaster for streaming
+func (c *Collector) SetBroadcaster(b *Broadcaster) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.broadcaster = b
+}
+
 // Start begins background collection
 func (c *Collector) Start(ctx context.Context) {
 	c.mu.Lock()
@@ -223,6 +232,14 @@ func (c *Collector) collectionLoop(ctx context.Context) {
 
 			c.cache.Set(snapshot)
 			prevSnapshot = snapshot
+
+			// Broadcast to SSE clients if broadcaster is set
+			if c.broadcaster != nil {
+				data, err := json.Marshal(snapshot)
+				if err == nil {
+					c.broadcaster.Broadcast(data)
+				}
+			}
 		}
 	}
 }

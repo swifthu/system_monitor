@@ -45,6 +45,12 @@ func main() {
 	// Create collector with background collection
 	col := collector.NewCollector(2 * time.Second)
 
+	// Create and start SSE broadcaster
+	broadcaster := collector.NewBroadcaster()
+	broadcaster.Start()
+	defer broadcaster.Stop()
+	col.SetBroadcaster(broadcaster)
+
 	// Start collector in background (must start before metrics collector references it)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
