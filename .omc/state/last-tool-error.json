@@ -1,7 +1,7 @@
 {
   "tool_name": "Bash",
-  "tool_input_preview": "{\"command\":\"./server 2>&1 &\\nsleep 2\\ncurl -N http://localhost:8001/api/stream --max-time 6 2>&1\",\"timeout\":15000,\"description\":\"Start server and test SSE endpoint\"}",
-  "error": "Exit code 28\nCollector: starting background collection\nCollector: macmon subprocess started\nSystem Monitor starting on http://localhost:8001\n  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current\n                                 Dload  Upload   Total   Spent    Left  Speed\n\r  0     0    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0data: {\"timestamp\":1778028367,\"memory\":{\"total\":17179869184,\"used\":9125101568,\"free\":159055872,\"available\":7349846016,\"use...",
-  "timestamp": "2026-05-06T00:46:13.431Z",
+  "tool_input_preview": "{\"command\":\"timeout 5 python -c \\\"\\nimport asyncio\\nimport httpx\\nimport time\\n\\nasync def test():\\n    # Test Banwagon API time\\n    start = time.time()\\n    try:\\n        resp = httpx.get('http://lo...",
+  "error": "Exit code 127\n(eval):1: command not found: timeout",
+  "timestamp": "2026-05-06T00:55:31.190Z",
   "retry_count": 2
 }

@@ -350,12 +350,16 @@ class SystemMonitorApp(App):
 
     def action_switch_tab_2(self):
         self.active_tab = "agents"
+        # Always render cached data immediately if available
+        if self.cache.quota_data or self.cache.banwagon_data:
+            self._update_agents_tab()
+        else:
+            # No cache at all, show "loading" immediately
+            self.query_one("#agents-info", Static).update("[dim]Loading quota...[/]")
         # Check if quota cache is stale (>quota_interval seconds), refresh if needed
         now = asyncio.get_event_loop().time()
-        if self.cache.last_quota_update > 0 and (now - self.cache.last_quota_update) > self.quota_interval:
+        if self.cache.last_quota_update == 0 or (now - self.cache.last_quota_update) > self.quota_interval:
             asyncio.create_task(self._refresh_quota())
-        elif self.cache.quota_data or self.cache.banwagon_data:
-            self._update_agents_tab()
 
     def action_refresh(self):
         asyncio.create_task(self._fetch_initial_snapshot())
