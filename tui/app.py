@@ -7,7 +7,7 @@ from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.widgets import Header, Footer, TabbedContent, TabPane, Static
 
-from api_client import APIClient, get_mmx_quota
+from api_client import APIClient
 from sse_client import SSEClient
 
 @dataclass
@@ -79,10 +79,12 @@ class SystemMonitorApp(App):
         yield Footer()
 
     async def on_mount(self):
+        # Fetch initial snapshot immediately while SSE connects in background
+        asyncio.create_task(self._fetch_initial_snapshot())
         # Start quota refresh timer (independent of SSE)
         self.set_interval(self.quota_interval, self._refresh_quota)
-        # Start SSE connection for system data
-        await self._start_sse()
+        # Start SSE connection for system data (non-blocking)
+        asyncio.create_task(self._start_sse())
         # Initial quota load
         await self._refresh_quota()
 
@@ -93,6 +95,18 @@ class SystemMonitorApp(App):
             on_message=self._on_sse_message,
             on_connect=self._on_sse_connect,
         )
+
+    async def _fetch_initial_snapshot(self):
+        """Fetch initial snapshot via REST API while SSE is connecting."""
+        try:
+            snapshot = await self.api.get_snapshot()
+            if snapshot:
+                data = _snapshot_to_dict(snapshot)
+                self.cache.system_snapshot = data
+                self.cache.last_system_update = asyncio.get_event_loop().time()
+                self._update_system_tab(data)
+        except Exception:
+            pass
 
     async def _on_sse_connect(self):
         """Called when SSE connection is established."""
@@ -107,12 +121,22 @@ class SystemMonitorApp(App):
             self._update_system_tab(data)
 
     async def _refresh_quota(self):
-        """Refresh quota data (MiniMax + Banwagon)."""
-        # MiniMax quota - uses existing mmx CLI approach
-        quota = get_mmx_quota()
-        if quota:
-            self.cache.quota_data = quota
-            self.cache.last_quota_update = asyncio.get_event_loop().time()
+        """Refresh quota data (MiniMax + Banwagon) - runs in background."""
+        # MiniMax quota - uses existing mmx CLI approach (async subprocess)
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                "mmx", "quota",
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=10.0)
+            if proc.returncode == 0:
+                import json
+                quota = json.loads(stdout)
+                self.cache.quota_data = quota
+                self.cache.last_quota_update = asyncio.get_event_loop().time()
+        except Exception:
+            pass
 
         # Banwagon - fetch via API
         try:
@@ -334,4 +358,43 @@ class SystemMonitorApp(App):
             self._update_agents_tab()
 
     def action_refresh(self):
-        self.update_metrics()
+        asyncio.create_task(self._fetch_initial_snapshot())
+
+def _snapshot_to_dict(snapshot) -> dict:
+    """Convert SystemSnapshot to dict for caching."""
+    return {
+        "timestamp": snapshot.timestamp,
+        "memory": {
+            "total": snapshot.memory_total,
+            "used": snapshot.memory_used,
+            "free": snapshot.memory_free,
+            "available": snapshot.memory_available,
+            "used_percent": snapshot.memory_used_percent,
+        },
+        "cpu": [
+            {
+                "cpu": c.cpu,
+                "user": c.user,
+                "system": c.system,
+                "idle": c.idle,
+            }
+            for c in snapshot.cpu_cores
+        ],
+        "power": {
+            "percent": snapshot.power_percent,
+            "charge": snapshot.power_charge,
+            "time_remaining": snapshot.power_time_remaining,
+            "cpu_power_w": snapshot.cpu_power_w,
+            "gpu_power_w": snapshot.gpu_power_w,
+            "cpu_temp": snapshot.cpu_temp,
+            "gpu_temp": snapshot.gpu_temp,
+        },
+        "disk": [
+            {"path": d.path, "total": d.total, "used": d.used, "used_percent": d.used_percent}
+            for d in snapshot.disk
+        ],
+        "network": [
+            {"interface": n.interface, "rx_rate": n.rx_rate, "tx_rate": n.tx_rate}
+            for n in snapshot.network
+        ],
+    }

@@ -18,7 +18,7 @@
     "runtime": null
   },
   "build": {
-    "buildCommand": null,
+    "buildCommand": "cd /Users/jimmyhu/Documents/CC/Projects/monitor/system_monitor && go build -o server . 2>&1",
     "testCommand": null,
     "lintCommand": null,
     "devCommand": null,
@@ -115,8 +115,8 @@
     },
     {
       "path": "tui/app.py",
-      "accessCount": 34,
-      "lastAccessed": 1776947853148,
+      "accessCount": 44,
+      "lastAccessed": 1778028796248,
       "type": "file"
     },
     {
@@ -228,6 +228,12 @@
       "type": "file"
     },
     {
+      "path": "main.py",
+      "accessCount": 2,
+      "lastAccessed": 1778028579923,
+      "type": "file"
+    },
+    {
       "path": "README.md",
       "accessCount": 1,
       "lastAccessed": 1776914268317,
@@ -294,9 +300,9 @@
       "type": "file"
     },
     {
-      "path": "main.py",
+      "path": "sse_client.py",
       "accessCount": 1,
-      "lastAccessed": 1776946979936,
+      "lastAccessed": 1778028712446,
       "type": "file"
     }
   ],
