@@ -1,22 +1,9 @@
-"""System Monitor TUI - Event-driven App."""
-import asyncio
-from dataclasses import dataclass, field
-from typing import Optional
-
+"""System Monitor TUI - Main App."""
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.widgets import Header, Footer, TabbedContent, TabPane, Static
 
-from api_client import APIClient
-from sse_client import SSEClient
-
-@dataclass
-class Cache:
-    """Data cache for TUI."""
-    system_snapshot: Optional[dict] = None
-    quota_data: Optional[dict] = None
-    banwagon_data: Optional[dict] = None
-    last_update: float = 0.0
+from api_client import APIClient, get_mmx_quota
 
 METRIC_COLORS = {
     "cpu": "cyan",
@@ -61,9 +48,10 @@ class SystemMonitorApp(App):
 
     def __init__(self):
         super().__init__()
-        self.api = APIClient(inline=True)
-        self.cache = Cache()
-        self.sse_client: Optional[SSEClient] = None
+        self.api = APIClient(inline=False)  # Use HTTP mode to avoid subprocess blocking
+        self.refresh_interval = 2.0
+        self.snapshot = None
+        self.quota_cache = None  # Cache for MiniMax quota, updated separately
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -74,55 +62,39 @@ class SystemMonitorApp(App):
                 yield Static("", id="agents-info")
         yield Footer()
 
+    def _schedule_refresh(self):
+        self.call_later(self.update_metrics)
+
+    def _refresh_quota_cache(self):
+        """Update quota cache in background (non-blocking)."""
+        import subprocess, json
+        try:
+            result = subprocess.run(["mmx", "quota"], capture_output=True, text=True, timeout=5)
+            if result.returncode == 0:
+                self.quota_cache = json.loads(result.stdout)
+        except Exception:
+            pass
+
     async def on_mount(self):
-        # Start SSE connection for all data (non-blocking)
-        asyncio.create_task(self._start_sse())
+        self.set_interval(self.refresh_interval, self._schedule_refresh)
+        self.set_interval(30.0, self._refresh_quota_cache)  # Update quota every 30s
+        self._refresh_quota_cache()  # Initial quota fetch
+        await self.update_metrics()
 
-    async def _start_sse(self):
-        """Start SSE connection for system data streaming."""
-        self.sse_client = SSEClient(f"{self.api.base_url}/api/stream")
-        await self.sse_client.connect(
-            on_message=self._on_sse_message,
-            on_connect=self._on_sse_connect,
-        )
+    async def update_metrics(self):
+        try:
+            self.snapshot = await self.api.get_snapshot()
+        except Exception:
+            return
 
-    async def _on_sse_connect(self):
-        """Called when SSE connection is established."""
-        pass  # Connection established, data will flow automatically
+        if not self.snapshot:
+            return
 
-    async def _on_sse_message(self, data: dict):
-        """Handle incoming SSE data - update cache, auto-refresh visible tab."""
-        # Update cache with all data from unified snapshot
-        if "system" in data:
-            self.cache.system_snapshot = data["system"]
-        if "quota" in data:
-            # quota might be raw JSON string or dict
-            quota = data["quota"]
-            if isinstance(quota, str):
-                import json
-                quota = json.loads(quota)
-            self.cache.quota_data = quota
-        if "banwagon" in data:
-            banwagon = data["banwagon"]
-            if isinstance(banwagon, str):
-                import json
-                banwagon = json.loads(banwagon)
-            self.cache.banwagon_data = banwagon
+        snapshot = self.snapshot
+        self._update_system_tab(snapshot)
+        self._update_agents_tab()
 
-        self.cache.last_update = asyncio.get_event_loop().time()
-
-        # Auto-refresh visible tab
-        if self.active_tab == "system" and self.cache.system_snapshot:
-            self._update_system_tab(self.cache.system_snapshot)
-        elif self.active_tab == "agents" and (self.cache.quota_data or self.cache.banwagon_data):
-            self._update_agents_tab()
-
-    async def on_unmount(self):
-        """Cleanup on app exit."""
-        if self.sse_client:
-            await self.sse_client.disconnect()
-
-    def _update_system_tab(self, data: dict):
+    def _update_system_tab(self, snapshot):
         """Build SYSTEM tab with all metrics."""
         lines = []
         c = METRIC_COLORS
@@ -135,13 +107,11 @@ class SystemMonitorApp(App):
         lines.append("[bold]System Monitor[/]  [dim]Press 1/2 to switch tabs[/]")
 
         # === Row 1-2: CPU | Memory ===
-        cpu_list = data.get("cpu", [])
         cpu_percent = 0.0
-        if cpu_list:
-            cpu_percent = sum(100 - core.get("idle", 0) for core in cpu_list) / len(cpu_list)
+        if snapshot.cpu_cores:
+            cpu_percent = sum(100 - core.idle for core in snapshot.cpu_cores) / len(snapshot.cpu_cores)
 
-        memory = data.get("memory", {})
-        mem_pct = memory.get("used_percent", 0.0)
+        mem_pct = snapshot.memory_used_percent
 
         bar_left = f"[{make_bar(cpu_percent)}] {cpu_percent:.1f}%"
         bar_right = f"[{make_bar(mem_pct)}] {mem_pct:.1f}%"
@@ -151,41 +121,36 @@ class SystemMonitorApp(App):
         lines.append("")
 
         # === Network | Disk (titles on same line) ===
-        network_list = data.get("network", [])
         # rx_rate/tx_rate from API are in MB/s, convert to bytes/s for format_rate
-        total_rx = sum(n.get("rx_rate", 0) * 1024 * 1024 for n in network_list)
-        total_tx = sum(n.get("tx_rate", 0) * 1024 * 1024 for n in network_list)
+        total_rx = sum(n.rx_rate * 1024 * 1024 for n in snapshot.network)
+        total_tx = sum(n.tx_rate * 1024 * 1024 for n in snapshot.network)
 
-        disk_list = data.get("disk", [])
         disk_summary = ""
-        for d in disk_list:
-            disk_summary += f" [dim]{format_bytes(d.get('used', 0))}/{format_bytes(d.get('total', 0))}[/]"
+        for d in snapshot.disk:
+            disk_summary += f" [dim]{format_bytes(d.used)}/{format_bytes(d.total)}[/]"
 
         lines.append(f"[bold {c['network']}]Network[/]" + " " * (name_col_width - 7) + f"[bold {c['disk']}]Disk[/][dim]{disk_summary}[/]")
 
         left_bar = f"↓ {format_rate(total_rx)}  ↑ {format_rate(total_tx)}"
         disk_bars = ""
-        for d in disk_list:
-            disk_bars += f"[{make_bar(d.get('used_percent', 0))}] {d.get('used_percent', 0):.1f}%  "
+        for d in snapshot.disk:
+            disk_bars += f"[{make_bar(d.used_percent)}] {d.used_percent:.1f}%  "
         right_bar = disk_bars.strip()
         lines.append(left_bar + " " * (name_col_width - len(left_bar)) + right_bar)
 
         lines.append("")
 
         # === Power | Temperature (title on same line, values below) ===
-        power = data.get("power", {})
-        cpu_w = power.get("cpu_power_w", 0.0)
-        gpu_w = power.get("gpu_power_w", 0.0)
+        cpu_w = snapshot.cpu_power_w
+        gpu_w = snapshot.gpu_power_w
 
         temp_parts = []
-        cpu_temp = power.get("cpu_temp", 0.0)
-        gpu_temp = power.get("gpu_temp", 0.0)
-        if cpu_temp > 0:
-            temp_parts.append(f"CPU: {cpu_temp:.0f}°C")
-        if gpu_temp > 0:
-            temp_parts.append(f"GPU: {gpu_temp:.0f}°C")
+        if snapshot.cpu_temp > 0:
+            temp_parts.append(f"CPU: {snapshot.cpu_temp:.0f}°C")
+        if snapshot.gpu_temp > 0:
+            temp_parts.append(f"GPU: {snapshot.gpu_temp:.0f}°C")
 
-        total_w = power.get("percent", 0.0)
+        total_w = snapshot.power_percent
         power_parts = []
         if cpu_w > 0:
             power_parts.append(f"CPU: {cpu_w:.1f}W")
@@ -205,8 +170,8 @@ class SystemMonitorApp(App):
 
         lines.append("[bold]QUOTA[/]  [dim]Press 1/2 to switch tabs[/]\n")
 
-        # MiniMax Quota from cache
-        quota = self.cache.quota_data
+        # MiniMax Quota via cache (updated separately to avoid blocking)
+        quota = self.quota_cache
         if quota and "model_remains" in quota:
             models = quota["model_remains"]
 
@@ -273,44 +238,40 @@ class SystemMonitorApp(App):
         else:
             lines.append("[dim]MiniMax quota unavailable[/]")
 
-        # Banwagon Quota from cache
-        bw = self.cache.banwagon_data
-        if bw:
-            lines.append("")
-            bw_location = bw.get("location", "Unknown")
-            bw_total_gb = bw.get("total_gb", 0)
-            bw_used_gb = bw.get("used_gb", 0)
-            bw_next_reset = bw.get("data_next_reset", 0)
+        # Banwagon Quota
+        try:
+            import httpx
+            resp = httpx.get(f"{self.api.base_url}/api/banwagon", timeout=5)
+            if resp.status_code == 200:
+                bw = resp.json()
+                lines.append("")
+                bw_location = bw.get("location", "Unknown")
+                bw_total_gb = bw.get("total_gb", 0)
+                bw_used_gb = bw.get("used_gb", 0)
+                bw_next_reset = bw.get("data_next_reset", 0)
 
-            lines.append(f"[bold {c['banwagon']}]Banwagon[/]  [dim]{bw_location}[/]")
-            bw_pct = (bw_used_gb / bw_total_gb * 100) if bw_total_gb > 0 else 0
-            lines.append(f"[{make_bar(bw_pct)}] {bw_used_gb:.1f}/{bw_total_gb} GB")
+                lines.append(f"[bold {c['banwagon']}]Banwagon[/]  [dim]{bw_location}[/]")
+                bw_pct = (bw_used_gb / bw_total_gb * 100) if bw_total_gb > 0 else 0
+                lines.append(f"[{make_bar(bw_pct)}] {bw_used_gb:.1f}/{bw_total_gb} GB")
 
-            if bw_next_reset > 0:
-                from datetime import datetime
-                reset_date = datetime.fromtimestamp(bw_next_reset)
-                now = datetime.now()
-                days_left = (reset_date - now).days
-                lines.append(f"[dim]reset in {days_left} days[/]")
+                if bw_next_reset > 0:
+                    from datetime import datetime
+                    reset_date = datetime.fromtimestamp(bw_next_reset)
+                    now = datetime.now()
+                    days_left = (reset_date - now).days
+                    lines.append(f"[dim]reset in {days_left} days[/]")
+        except Exception:
+            pass
 
         self.query_one("#agents-info", Static).update("\n".join(lines))
 
     def action_switch_tab_1(self):
-        self.active_tab = "system"
-        if self.cache.system_snapshot:
-            self._update_system_tab(self.cache.system_snapshot)
+        """Switch to SYSTEM tab - no data update, use cached data."""
+        pass
 
     def action_switch_tab_2(self):
-        self.active_tab = "agents"
-        if self.cache.quota_data or self.cache.banwagon_data:
-            self._update_agents_tab()
-        else:
-            self.query_one("#agents-info", Static).update("[dim]Loading quota...[/]")
+        """Switch to Quota tab - no data update, use cached data."""
+        pass
 
     def action_refresh(self):
-        """Manual refresh - re-render current tab from cache."""
-        if self.active_tab == "system" and self.cache.system_snapshot:
-            self._update_system_tab(self.cache.system_snapshot)
-        elif self.active_tab == "agents" and (self.cache.quota_data or self.cache.banwagon_data):
-            self._update_agents_tab()
-
+        self.update_metrics()
