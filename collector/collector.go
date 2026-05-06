@@ -158,6 +158,13 @@ func (c *Collector) Cache() *Cache {
 	return c.cache
 }
 
+// Broadcaster returns the SSE broadcaster
+func (c *Collector) Broadcaster() *Broadcaster {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.broadcaster
+}
+
 // SetBroadcaster sets the SSE broadcaster for streaming
 func (c *Collector) SetBroadcaster(b *Broadcaster) {
 	c.mu.Lock()

@@ -47,6 +47,7 @@ func NewHandler(col *collector.Collector, metricsDB *collector.MetricsDB) http.H
 	}
 
 	h.mux.HandleFunc("/api/snapshot", h.handleSystemSnapshot)
+	h.mux.HandleFunc("/api/stream", h.handleStreamSSE)
 	h.mux.HandleFunc("/api/system", h.handleSystemSnapshot)
 	h.mux.HandleFunc("/api/oml", h.handleOML)
 	h.mux.HandleFunc("/api/oml/models", h.handleOMLModels)
@@ -89,6 +90,52 @@ func (h *Handler) handleSystemSnapshot(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "no-cache")
 	json.NewEncoder(w).Encode(snapshot)
+}
+
+func (h *Handler) handleStreamSSE(w http.ResponseWriter, r *http.Request) {
+	// Set SSE headers
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("Transfer-Encoding", "chunked")
+	w.Header().Set("X-Accel-Buffering", "no") // disable nginx buffering
+
+	// Create a channel for this client
+	clientCh := h.collector.Broadcaster().Register()
+	defer h.collector.Broadcaster().Unregister(clientCh)
+
+	// Send current snapshot immediately
+	snapshot, ok := h.collector.Cache().Get()
+	if ok {
+		data, err := json.Marshal(snapshot)
+		if err == nil {
+			fmt.Fprintf(w, "data: %s\n\n", data)
+			w.(http.Flusher).Flush()
+		}
+	}
+
+	// Heartbeat ticker (every 15 seconds)
+	heartbeat := time.NewTicker(15 * time.Second)
+	defer heartbeat.Stop()
+
+	// Client disconnect context
+	clientGone := r.Context().Done()
+
+	for {
+		select {
+		case <-clientGone:
+			return
+		case data, ok := <-clientCh:
+			if !ok {
+				return
+			}
+			fmt.Fprintf(w, "data: %s\n\n", data)
+			w.(http.Flusher).Flush()
+		case <-heartbeat.C:
+			fmt.Fprintf(w, ": heartbeat\n\n")
+			w.(http.Flusher).Flush()
+		}
+	}
 }
 
 func (h *Handler) handleOML(w http.ResponseWriter, r *http.Request) {
