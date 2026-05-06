@@ -16,9 +16,7 @@ class Cache:
     system_snapshot: Optional[dict] = None
     quota_data: Optional[dict] = None
     banwagon_data: Optional[dict] = None
-    last_system_update: float = 0.0
-    last_quota_update: float = 0.0
-    last_banwagon_update: float = 0.0
+    last_update: float = 0.0
 
 METRIC_COLORS = {
     "cpu": "cyan",
@@ -66,8 +64,6 @@ class SystemMonitorApp(App):
         self.api = APIClient(inline=True)
         self.cache = Cache()
         self.sse_client: Optional[SSEClient] = None
-        self.refresh_interval = 2.0
-        self.quota_interval = 10.0  # Quota 刷新间隔 10 秒
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -79,14 +75,8 @@ class SystemMonitorApp(App):
         yield Footer()
 
     async def on_mount(self):
-        # Fetch initial snapshot immediately while SSE connects in background
-        asyncio.create_task(self._fetch_initial_snapshot())
-        # Start quota refresh timer (independent of SSE)
-        self.set_interval(self.quota_interval, self._refresh_quota)
-        # Start SSE connection for system data (non-blocking)
+        # Start SSE connection for all data (non-blocking)
         asyncio.create_task(self._start_sse())
-        # Initial quota load
-        await self._refresh_quota()
 
     async def _start_sse(self):
         """Start SSE connection for system data streaming."""
@@ -96,79 +86,41 @@ class SystemMonitorApp(App):
             on_connect=self._on_sse_connect,
         )
 
-    async def _fetch_initial_snapshot(self):
-        """Fetch initial snapshot via REST API while SSE is connecting."""
-        try:
-            snapshot = await self.api.get_snapshot()
-            if snapshot:
-                data = _snapshot_to_dict(snapshot)
-                self.cache.system_snapshot = data
-                self.cache.last_system_update = asyncio.get_event_loop().time()
-                self._update_system_tab(data)
-        except Exception:
-            pass
-
     async def _on_sse_connect(self):
         """Called when SSE connection is established."""
         pass  # Connection established, data will flow automatically
 
     async def _on_sse_message(self, data: dict):
-        """Handle incoming SSE data."""
-        self.cache.system_snapshot = data
-        self.cache.last_system_update = asyncio.get_event_loop().time()
-        # Update system tab if it's active
-        if self.active_tab == "system":
-            self._update_system_tab(data)
-
-    async def _refresh_quota(self):
-        """Refresh quota data (MiniMax + Banwagon) - runs in background."""
-        # MiniMax quota - uses existing mmx CLI approach (async subprocess)
-        try:
-            proc = await asyncio.create_subprocess_exec(
-                "mmx", "quota",
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
-            stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=10.0)
-            if proc.returncode == 0:
+        """Handle incoming SSE data - update cache, auto-refresh visible tab."""
+        # Update cache with all data from unified snapshot
+        if "system" in data:
+            self.cache.system_snapshot = data["system"]
+        if "quota" in data:
+            # quota might be raw JSON string or dict
+            quota = data["quota"]
+            if isinstance(quota, str):
                 import json
-                quota = json.loads(stdout)
-                self.cache.quota_data = quota
-                self.cache.last_quota_update = asyncio.get_event_loop().time()
-        except Exception:
-            pass
+                quota = json.loads(quota)
+            self.cache.quota_data = quota
+        if "banwagon" in data:
+            banwagon = data["banwagon"]
+            if isinstance(banwagon, str):
+                import json
+                banwagon = json.loads(banwagon)
+            self.cache.banwagon_data = banwagon
 
-        # Banwagon - fetch via API
-        try:
-            import httpx
-            resp = httpx.get(f"{self.api.base_url}/api/banwagon", timeout=5)
-            if resp.status_code == 200:
-                self.cache.banwagon_data = resp.json()
-                self.cache.last_banwagon_update = asyncio.get_event_loop().time()
-        except Exception:
-            pass
+        self.cache.last_update = asyncio.get_event_loop().time()
 
-        # Update quota tab if it's active
-        if self.active_tab == "agents":
+        # Auto-refresh visible tab
+        if self.active_tab == "system" and self.cache.system_snapshot:
+            self._update_system_tab(self.cache.system_snapshot)
+        elif self.active_tab == "agents" and (self.cache.quota_data or self.cache.banwagon_data):
             self._update_agents_tab()
 
     async def on_unmount(self):
         """Cleanup on app exit."""
         if self.sse_client:
             await self.sse_client.disconnect()
-
-    async def update_metrics(self):
-        try:
-            self.snapshot = await self.api.get_snapshot()
-        except Exception:
-            return
-
-        if not self.snapshot:
-            return
-
-        snapshot = self.snapshot
-        self._update_system_tab(snapshot)
-        self._update_agents_tab()
 
     def _update_system_tab(self, data: dict):
         """Build SYSTEM tab with all metrics."""
@@ -350,55 +302,15 @@ class SystemMonitorApp(App):
 
     def action_switch_tab_2(self):
         self.active_tab = "agents"
-        # Always render cached data immediately if available
         if self.cache.quota_data or self.cache.banwagon_data:
             self._update_agents_tab()
         else:
-            # No cache at all, show "loading" immediately
             self.query_one("#agents-info", Static).update("[dim]Loading quota...[/]")
-        # Check if quota cache is stale (>quota_interval seconds), refresh if needed
-        now = asyncio.get_event_loop().time()
-        if self.cache.last_quota_update == 0 or (now - self.cache.last_quota_update) > self.quota_interval:
-            asyncio.create_task(self._refresh_quota())
 
     def action_refresh(self):
-        asyncio.create_task(self._fetch_initial_snapshot())
+        """Manual refresh - re-render current tab from cache."""
+        if self.active_tab == "system" and self.cache.system_snapshot:
+            self._update_system_tab(self.cache.system_snapshot)
+        elif self.active_tab == "agents" and (self.cache.quota_data or self.cache.banwagon_data):
+            self._update_agents_tab()
 
-def _snapshot_to_dict(snapshot) -> dict:
-    """Convert SystemSnapshot to dict for caching."""
-    return {
-        "timestamp": snapshot.timestamp,
-        "memory": {
-            "total": snapshot.memory_total,
-            "used": snapshot.memory_used,
-            "free": snapshot.memory_free,
-            "available": snapshot.memory_available,
-            "used_percent": snapshot.memory_used_percent,
-        },
-        "cpu": [
-            {
-                "cpu": c.cpu,
-                "user": c.user,
-                "system": c.system,
-                "idle": c.idle,
-            }
-            for c in snapshot.cpu_cores
-        ],
-        "power": {
-            "percent": snapshot.power_percent,
-            "charge": snapshot.power_charge,
-            "time_remaining": snapshot.power_time_remaining,
-            "cpu_power_w": snapshot.cpu_power_w,
-            "gpu_power_w": snapshot.gpu_power_w,
-            "cpu_temp": snapshot.cpu_temp,
-            "gpu_temp": snapshot.gpu_temp,
-        },
-        "disk": [
-            {"path": d.path, "total": d.total, "used": d.used, "used_percent": d.used_percent}
-            for d in snapshot.disk
-        ],
-        "network": [
-            {"interface": n.interface, "rx_rate": n.rx_rate, "tx_rate": n.tx_rate}
-            for n in snapshot.network
-        ],
-    }
