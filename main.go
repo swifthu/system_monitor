@@ -73,7 +73,16 @@ func main() {
 	}
 
 	// Create HTTP handler with collector (after metricsDB may be initialized)
-	handler := api.NewHandler(col, metricsDB)
+	h := api.NewHandler(col, metricsDB)
+	handler, ok := h.(*api.Handler)
+	if !ok {
+		log.Fatalf("Failed to create handler: unexpected type")
+	}
+
+	// Start background fetchers for quota and banwagon
+	fetchCtx, fetchCancel := context.WithCancel(context.Background())
+	defer fetchCancel()
+	go handler.StartBackgroundFetchers(fetchCtx)
 
 	// Create HTTP server
 	srv := &http.Server{

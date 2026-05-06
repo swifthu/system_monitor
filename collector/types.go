@@ -1,5 +1,7 @@
 package collector
 
+import "encoding/json"
+
 // MemoryInfo holds memory statistics
 type MemoryInfo struct {
 	Total       uint64  `json:"total"`
@@ -72,4 +74,12 @@ type SystemSnapshot struct {
 	Power     PowerInfo     `json:"power"`
 	Disk      []DiskInfo    `json:"disk"`
 	Network   []NetworkInfo `json:"network"`
+}
+
+// UnifiedSnapshot combines all data for SSE push
+type UnifiedSnapshot struct {
+	Timestamp int64           `json:"timestamp"`
+	System    *SystemSnapshot  `json:"system,omitempty"`
+	Quota     json.RawMessage  `json:"quota,omitempty"`
+	Banwagon  json.RawMessage  `json:"banwagon,omitempty"`
 }

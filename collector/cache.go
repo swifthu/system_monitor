@@ -1,6 +1,7 @@
 package collector
 
 import (
+	"encoding/json"
 	"sync"
 	"time"
 )
@@ -88,4 +89,57 @@ func (c *Cache) WaitForUpdate(after time.Time, timeout time.Duration) (*SystemSn
 	}()
 
 	return snapshot, ok
+}
+
+// UnifiedCache holds all data for SSE broadcasting
+type UnifiedCache struct {
+	mu                 sync.RWMutex
+	systemSnapshot     *SystemSnapshot
+	quotaData          []byte
+	banwagonData       []byte
+	lastQuotaUpdate    time.Time
+	lastBanwagonUpdate time.Time
+}
+
+// NewUnifiedCache creates a new UnifiedCache
+func NewUnifiedCache() *UnifiedCache {
+	return &UnifiedCache{}
+}
+
+// SetSystem sets the system snapshot
+func (c *UnifiedCache) SetSystem(s *SystemSnapshot) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.systemSnapshot = s
+}
+
+// SetQuota sets the quota data (raw JSON)
+func (c *UnifiedCache) SetQuota(data []byte) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.quotaData = data
+	c.lastQuotaUpdate = time.Now()
+}
+
+// SetBanwagon sets the banwagon data (raw JSON)
+func (c *UnifiedCache) SetBanwagon(data []byte) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.banwagonData = data
+	c.lastBanwagonUpdate = time.Now()
+}
+
+// Get returns combined snapshot for SSE as JSON bytes
+func (c *UnifiedCache) Get() []byte {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	snap := UnifiedSnapshot{
+		Timestamp: time.Now().Unix(),
+		System:    c.systemSnapshot,
+		Quota:     c.quotaData,
+		Banwagon:  c.banwagonData,
+	}
+	data, _ := json.Marshal(snap)
+	return data
 }

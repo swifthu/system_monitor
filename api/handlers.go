@@ -19,9 +19,10 @@ import (
 
 // Handler holds HTTP handler dependencies
 type Handler struct {
-	collector  *collector.Collector
-	metricsDB  *collector.MetricsDB // nil if metrics disabled
-	mux        *http.ServeMux
+	collector    *collector.Collector
+	metricsDB    *collector.MetricsDB // nil if metrics disabled
+	mux          *http.ServeMux
+	unifiedCache *collector.UnifiedCache // ADD THIS
 }
 
 // OMLXResponse represents the OMLX API response format
@@ -41,9 +42,10 @@ type QuotaInfo struct {
 // NewHandler creates a new HTTP handler
 func NewHandler(col *collector.Collector, metricsDB *collector.MetricsDB) http.Handler {
 	h := &Handler{
-		collector: col,
-		metricsDB: metricsDB,
-		mux:       http.NewServeMux(),
+		collector:    col,
+		metricsDB:    metricsDB,
+		mux:          http.NewServeMux(),
+		unifiedCache: collector.NewUnifiedCache(), // ADD THIS
 	}
 
 	h.mux.HandleFunc("/api/snapshot", h.handleSystemSnapshot)
@@ -440,6 +442,86 @@ func (h *Handler) serveBanwagonError(w http.ResponseWriter, msg string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusServiceUnavailable)
 	json.NewEncoder(w).Encode(map[string]string{"error": msg})
+}
+
+func (h *Handler) FetchQuota() {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	cfg, err := loadConfig()
+	if err != nil {
+		return
+	}
+
+	url := fmt.Sprintf("https://www.minimaxi.com/v1/api/openplatform/coding_plan/remains?GroupId=%s", cfg.MiniMaxGroupID)
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		return
+	}
+	req.Header.Set("Authorization", "Bearer "+cfg.MiniMaxAPIKey)
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return
+	}
+	h.unifiedCache.SetQuota(body)
+}
+
+func (h *Handler) FetchBanwagon() {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	cfg, err := loadConfig()
+	if err != nil {
+		return
+	}
+
+	url := fmt.Sprintf("https://api.64clouds.com/v1/getServiceInfo?veid=%s&api_key=%s", cfg.BanwagonVeid, cfg.BanwagonAPIKey)
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		return
+	}
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return
+	}
+	h.unifiedCache.SetBanwagon(body)
+}
+
+func (h *Handler) StartBackgroundFetchers(ctx context.Context) {
+	// MiniMax quota - every 30 seconds
+	h.FetchQuota() // fetch immediately on start
+	quotaTicker := time.NewTicker(30 * time.Second)
+	defer quotaTicker.Stop()
+
+	// Banwagon - every 60 seconds
+	h.FetchBanwagon() // fetch immediately on start
+	banwagonTicker := time.NewTicker(60 * time.Second)
+	defer banwagonTicker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-quotaTicker.C:
+			h.FetchQuota()
+		case <-banwagonTicker.C:
+			h.FetchBanwagon()
+		}
+	}
 }
 
 func (h *Handler) handleOpenClaw(w http.ResponseWriter, r *http.Request) {
