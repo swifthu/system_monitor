@@ -106,19 +106,20 @@ func (h *Handler) handleStreamSSE(w http.ResponseWriter, r *http.Request) {
 	clientCh := h.collector.Broadcaster().Register()
 	defer h.collector.Broadcaster().Unregister(clientCh)
 
-	// Send current snapshot immediately
-	snapshot, ok := h.collector.Cache().Get()
-	if ok {
-		data, err := json.Marshal(snapshot)
-		if err == nil {
-			fmt.Fprintf(w, "data: %s\n\n", data)
-			w.(http.Flusher).Flush()
-		}
+	// Send current unified snapshot immediately (includes system + quota + banwagon)
+	data := h.unifiedCache.Get()
+	if len(data) > 0 {
+		fmt.Fprintf(w, "data: %s\n\n", data)
+		w.(http.Flusher).Flush()
 	}
 
 	// Heartbeat ticker (every 15 seconds)
 	heartbeat := time.NewTicker(15 * time.Second)
 	defer heartbeat.Stop()
+
+	// Ticker to send unified cache updates every 2 seconds (aligned with collection)
+	ticker := time.NewTicker(2 * time.Second)
+	defer ticker.Stop()
 
 	// Client disconnect context
 	clientGone := r.Context().Done()
@@ -131,8 +132,21 @@ func (h *Handler) handleStreamSSE(w http.ResponseWriter, r *http.Request) {
 			if !ok {
 				return
 			}
-			fmt.Fprintf(w, "data: %s\n\n", data)
-			w.(http.Flusher).Flush()
+			// Update unified cache with system data
+			h.unifiedCache.SetSystem(data)
+			// Send unified snapshot
+			uData := h.unifiedCache.Get()
+			if len(uData) > 0 {
+				fmt.Fprintf(w, "data: %s\n\n", uData)
+				w.(http.Flusher).Flush()
+			}
+		case <-ticker.C:
+			// Periodic unified snapshot push
+			data := h.unifiedCache.Get()
+			if len(data) > 0 {
+				fmt.Fprintf(w, "data: %s\n\n", data)
+				w.(http.Flusher).Flush()
+			}
 		case <-heartbeat.C:
 			fmt.Fprintf(w, ": heartbeat\n\n")
 			w.(http.Flusher).Flush()
@@ -373,66 +387,51 @@ func (h *Handler) handleBanwagon(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	veid := "1120995"
-	apiKey := "private_NPyZDHMumVbWt1W0B63Xb58e"
-	apiURL := fmt.Sprintf("https://api.64clouds.com/v1/getServiceInfo?veid=%s&api_key=%s", veid, apiKey)
-
-	req, err := http.NewRequestWithContext(ctx, "GET", apiURL, nil)
+	cfg, err := loadConfig()
 	if err != nil {
-		h.serveBanwagonError(w, "failed to create request")
+		h.serveBanwagonError(w, "failed to load config")
 		return
 	}
 
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		h.serveBanwagonError(w, "--")
+	// Fetch first account
+	accounts := []interface{}{}
+	url1 := fmt.Sprintf("https://api.64clouds.com/v1/getServiceInfo?veid=%s&api_key=%s", cfg.BanwagonVeid, cfg.BanwagonAPIKey)
+	req1, err := http.NewRequestWithContext(ctx, "GET", url1, nil)
+	if err == nil {
+		resp1, err := http.DefaultClient.Do(req1)
+		if err == nil && resp1.StatusCode == http.StatusOK {
+			if body1, err := io.ReadAll(resp1.Body); err == nil {
+				var data1 map[string]interface{}
+				if json.Unmarshal(body1, &data1) == nil {
+					accounts = append(accounts, data1)
+				}
+			}
+			resp1.Body.Close()
+		}
+	}
+
+	// Fetch second account
+	url2 := fmt.Sprintf("https://api.64clouds.com/v1/getServiceInfo?veid=%s&api_key=%s", cfg.BanwagonVeid2, cfg.BanwagonAPIKey2)
+	req2, err := http.NewRequestWithContext(ctx, "GET", url2, nil)
+	if err == nil {
+		resp2, err := http.DefaultClient.Do(req2)
+		if err == nil && resp2.StatusCode == http.StatusOK {
+			if body2, err := io.ReadAll(resp2.Body); err == nil {
+				var data2 map[string]interface{}
+				if json.Unmarshal(body2, &data2) == nil {
+					accounts = append(accounts, data2)
+				}
+			}
+			resp2.Body.Close()
+		}
+	}
+
+	if len(accounts) == 0 {
+		h.serveBanwagonError(w, "both accounts unavailable")
 		return
 	}
-	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		h.serveBanwagonError(w, "--")
-		return
-	}
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		h.serveBanwagonError(w, "--")
-		return
-	}
-
-	// Parse response and extract relevant fields
-	var data map[string]interface{}
-	if err := json.Unmarshal(body, &data); err != nil {
-		h.serveBanwagonError(w, "--")
-		return
-	}
-
-	// Return simplified response - transform to frontend format
-	totalBytes := toFloat64(data["plan_monthly_data"])
-	usedBytes := toFloat64(data["data_counter"])
-	ramBytes := toFloat64(data["plan_ram"])
-	diskBytes := toFloat64(data["plan_disk"])
-
-	// Extract IP address
-	ips := data["ip_addresses"].([]interface{})
-	ipAddr := ""
-	if len(ips) > 0 {
-		ipAddr = ips[0].(string)
-	}
-
-	result := map[string]interface{}{
-		"status":           data["status"],
-		"total_gb":         totalBytes / 1024 / 1024 / 1024,
-		"used_gb":          usedBytes / 1024 / 1024 / 1024,
-		"ram_gb":           ramBytes / 1024 / 1024 / 1024,
-		"disk_gb":          diskBytes / 1024 / 1024 / 1024,
-		"ip":               ipAddr,
-		"os":               data["os"],
-		"location":         data["node_location"],
-		"data_next_reset":  data["data_next_reset"],
-	}
-
+	result := map[string]interface{}{"accounts": accounts}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(result)
 }
@@ -482,23 +481,29 @@ func (h *Handler) FetchBanwagon() {
 		return
 	}
 
-	url := fmt.Sprintf("https://api.64clouds.com/v1/getServiceInfo?veid=%s&api_key=%s", cfg.BanwagonVeid, cfg.BanwagonAPIKey)
-	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
-	if err != nil {
-		return
+	// Fetch first account
+	url1 := fmt.Sprintf("https://api.64clouds.com/v1/getServiceInfo?veid=%s&api_key=%s", cfg.BanwagonVeid, cfg.BanwagonAPIKey)
+	body1 := []byte("{}")
+	if req1, err := http.NewRequestWithContext(ctx, "GET", url1, nil); err == nil {
+		if resp1, err := http.DefaultClient.Do(req1); err == nil {
+			body1, _ = io.ReadAll(resp1.Body)
+			resp1.Body.Close()
+		}
 	}
 
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return
+	// Fetch second account
+	url2 := fmt.Sprintf("https://api.64clouds.com/v1/getServiceInfo?veid=%s&api_key=%s", cfg.BanwagonVeid2, cfg.BanwagonAPIKey2)
+	body2 := []byte("{}")
+	if req2, err := http.NewRequestWithContext(ctx, "GET", url2, nil); err == nil {
+		if resp2, err := http.DefaultClient.Do(req2); err == nil {
+			body2, _ = io.ReadAll(resp2.Body)
+			resp2.Body.Close()
+		}
 	}
-	defer resp.Body.Close()
 
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return
-	}
-	h.unifiedCache.SetBanwagon(body)
+	// Combine both responses as array
+	combined := fmt.Sprintf(`{"accounts": [%s, %s]}`, string(body1), string(body2))
+	h.unifiedCache.SetBanwagon([]byte(combined))
 }
 
 func (h *Handler) StartBackgroundFetchers(ctx context.Context) {
@@ -604,6 +609,8 @@ type Config struct {
 	MiniMaxAPIKey   string `json:"minimax_api_key"`
 	BanwagonVeid    string `json:"banwagon_veid"`
 	BanwagonAPIKey  string `json:"banwagon_api_key"`
+	BanwagonVeid2   string `json:"banwagon_veid_2"`
+	BanwagonAPIKey2 string `json:"banwagon_api_key_2"`
 }
 
 func loadConfig() (*Config, error) {

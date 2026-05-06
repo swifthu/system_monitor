@@ -36,6 +36,19 @@ def make_bar(value: float, width: int = 20) -> str:
     empty = width - filled
     return "█" * filled + "░" * empty
 
+def toFloat64(v) -> float:
+    """Convert various types to float64."""
+    if v is None:
+        return 0
+    if isinstance(v, float):
+        return v
+    if isinstance(v, int):
+        return float(v)
+    try:
+        return float(v)
+    except (ValueError, TypeError):
+        return 0
+
 class SystemMonitorApp(App):
     BINDINGS = [
         Binding("q", "quit", "Quit"),
@@ -238,28 +251,33 @@ class SystemMonitorApp(App):
         else:
             lines.append("[dim]MiniMax quota unavailable[/]")
 
-        # Banwagon Quota
+        # Banwagon Quota (supports multiple accounts)
         try:
             import httpx
             resp = httpx.get(f"{self.api.base_url}/api/banwagon", timeout=5)
             if resp.status_code == 200:
                 bw = resp.json()
-                lines.append("")
-                bw_location = bw.get("location", "Unknown")
-                bw_total_gb = bw.get("total_gb", 0)
-                bw_used_gb = bw.get("used_gb", 0)
-                bw_next_reset = bw.get("data_next_reset", 0)
+                accounts = bw.get("accounts", [])
+                for i, account in enumerate(accounts):
+                    if i > 0:
+                        lines.append("")
+                    location = account.get("node_location", "Unknown")
+                    total_bytes = toFloat64(account.get("plan_monthly_data"))
+                    used_bytes = toFloat64(account.get("data_counter"))
+                    total_gb = total_bytes / 1024 / 1024 / 1024
+                    used_gb = used_bytes / 1024 / 1024 / 1024
+                    next_reset = toFloat64(account.get("data_next_reset"))
 
-                lines.append(f"[bold {c['banwagon']}]Banwagon[/]  [dim]{bw_location}[/]")
-                bw_pct = (bw_used_gb / bw_total_gb * 100) if bw_total_gb > 0 else 0
-                lines.append(f"[{make_bar(bw_pct)}] {bw_used_gb:.1f}/{bw_total_gb} GB")
+                    lines.append(f"[bold {c['banwagon']}]Banwagon {i+1}[/]  [dim]{location}[/]")
+                    bw_pct = (used_gb / total_gb * 100) if total_gb > 0 else 0
+                    lines.append(f"[{make_bar(bw_pct)}] {used_gb:.1f}/{total_gb:.1f} GB")
 
-                if bw_next_reset > 0:
-                    from datetime import datetime
-                    reset_date = datetime.fromtimestamp(bw_next_reset)
-                    now = datetime.now()
-                    days_left = (reset_date - now).days
-                    lines.append(f"[dim]reset in {days_left} days[/]")
+                    if next_reset > 0:
+                        from datetime import datetime
+                        reset_date = datetime.fromtimestamp(next_reset)
+                        now = datetime.now()
+                        days_left = (reset_date - now).days
+                        lines.append(f"[dim]reset in {days_left} days[/]")
         except Exception:
             pass
 

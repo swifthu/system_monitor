@@ -106,11 +106,31 @@ func NewUnifiedCache() *UnifiedCache {
 	return &UnifiedCache{}
 }
 
-// SetSystem sets the system snapshot
-func (c *UnifiedCache) SetSystem(s *SystemSnapshot) {
+// SetSystem sets the system snapshot from raw JSON bytes
+func (c *UnifiedCache) SetSystem(data []byte) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.systemSnapshot = s
+
+	var snap SystemSnapshot
+	if err := json.Unmarshal(data, &snap); err != nil {
+		return err
+	}
+	c.systemSnapshot = &snap
+	return nil
+}
+
+// GetQuotaData returns quota raw JSON bytes
+func (c *UnifiedCache) GetQuotaData() []byte {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.quotaData
+}
+
+// GetBanwagonData returns banwagon raw JSON bytes
+func (c *UnifiedCache) GetBanwagonData() []byte {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.banwagonData
 }
 
 // SetQuota sets the quota data (raw JSON)
