@@ -1,7 +1,0 @@
-{
-  "tool_name": "Bash",
-  "tool_input_preview": "{\"command\":\"go build -o server . 2>&1\",\"description\":\"Build Go server\"}",
-  "error": "Exit code 1\n# github.com/jimmyhu/Documents/CC/Projects/system_monitor/api\napi/handlers.go:399:38: too many arguments in call to http.DefaultClient.Do\n\thave (*http.Request, error)\n\twant (*http.Request)\napi/handlers.go:412:38: too many arguments in call to http.DefaultClient.Do\n\thave (*http.Request, error)\n\twant (*http.Request)\napi/handlers.go:480:38: too many arguments in call to http.DefaultClient.Do\n\thave (*http.Request, error)\n\twant (*http.Request)\napi/handlers.go:489:38: too many arguments in...",
-  "timestamp": "2026-05-06T03:01:18.667Z",
-  "retry_count": 2
-}

@@ -65,6 +65,7 @@ class SystemMonitorApp(App):
         self.refresh_interval = 2.0
         self.snapshot = None
         self.quota_cache = None  # Cache for MiniMax quota, updated separately
+        self.banwagon_cache = None  # Cache for Banwagon, updated on demand
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -92,6 +93,7 @@ class SystemMonitorApp(App):
         self.set_interval(self.refresh_interval, self._schedule_refresh)
         self.set_interval(30.0, self._refresh_quota_cache)  # Update quota every 30s
         self._refresh_quota_cache()  # Initial quota fetch
+        self._refresh_banwagon_cache()  # Initial Banwagon fetch
         await self.update_metrics()
 
     async def update_metrics(self):
@@ -188,7 +190,16 @@ class SystemMonitorApp(App):
         if quota and "model_remains" in quota:
             models = quota["model_remains"]
 
-            lines.append(f"[bold {c['quota']}]MiniMax Quota:[/]\n")
+            # Compute weekly reset countdown from first model's weekly data
+            first = models[0]
+            weekly_remains = first.get("weekly_remains_time", 0)
+            if weekly_remains > 0:
+                wh = int(weekly_remains // 3600000)
+                wm = int((weekly_remains % 3600000) // 60000)
+                weekly_str = f" (weekly reset in {wh}h {wm}m)"
+            else:
+                weekly_str = ""
+            lines.append(f"[bold {c['quota']}]MiniMax Quota:{weekly_str}[/]\n")
 
             # Each model takes 3 rows: name, bar, reset time
             # Two models side by side with aligned columns
@@ -251,35 +262,43 @@ class SystemMonitorApp(App):
         else:
             lines.append("[dim]MiniMax quota unavailable[/]")
 
-        # Banwagon Quota (supports multiple accounts)
-        try:
-            import httpx
-            resp = httpx.get(f"{self.api.base_url}/api/banwagon", timeout=5)
-            if resp.status_code == 200:
-                bw = resp.json()
-                accounts = bw.get("accounts", [])
-                for i, account in enumerate(accounts):
-                    if i > 0:
-                        lines.append("")
-                    location = account.get("node_location", "Unknown")
-                    total_bytes = toFloat64(account.get("plan_monthly_data"))
-                    used_bytes = toFloat64(account.get("data_counter"))
-                    total_gb = total_bytes / 1024 / 1024 / 1024
-                    used_gb = used_bytes / 1024 / 1024 / 1024
-                    next_reset = toFloat64(account.get("data_next_reset"))
+        lines.append("")  # blank line before Banwagon
 
-                    lines.append(f"[bold {c['banwagon']}]Banwagon {i+1}[/]  [dim]{location}[/]")
-                    bw_pct = (used_gb / total_gb * 100) if total_gb > 0 else 0
-                    lines.append(f"[{make_bar(bw_pct)}] {used_gb:.1f}/{total_gb:.1f} GB")
+        # Banwagon Quota (two accounts side by side, from cache)
+        bw = self.banwagon_cache
+        if bw:
+            accounts = bw.get("accounts", [])
+            if len(accounts) >= 2:
+                name_col_width = 45
+                bar_col_width = 36
 
-                    if next_reset > 0:
-                        from datetime import datetime
-                        reset_date = datetime.fromtimestamp(next_reset)
-                        now = datetime.now()
-                        days_left = (reset_date - now).days
-                        lines.append(f"[dim]reset in {days_left} days[/]")
-        except Exception:
-            pass
+                # Row 1: Banwagon headers
+                acc0 = accounts[0]
+                acc1 = accounts[1]
+                loc0 = acc0.get("node_location", "Unknown")
+                loc1 = acc1.get("node_location", "Unknown")
+                lines.append(f"[bold {c['banwagon']}]Banwagon CN2GIA[/][dim] - {loc0}[/]" + " " * (name_col_width - len(loc0) - 26) + f"[bold {c['banwagon']}]Banwagon DC9[/][dim] - {loc1}[/]")
+
+                # Row 2: Progress bars
+                total0 = toFloat64(acc0.get("plan_monthly_data")) / 1024**3
+                used0 = toFloat64(acc0.get("data_counter")) / 1024**3
+                total1 = toFloat64(acc1.get("plan_monthly_data")) / 1024**3
+                used1 = toFloat64(acc1.get("data_counter")) / 1024**3
+                pct0 = (used0 / total0 * 100) if total0 > 0 else 0
+                pct1 = (used1 / total1 * 100) if total1 > 0 else 0
+                bar0 = f"[{make_bar(pct0)}] {used0:.1f}/{total0:.1f} GB"
+                bar1 = f"[{make_bar(pct1)}] {used1:.1f}/{total1:.1f} GB"
+                lines.append(f"{bar0:<{bar_col_width}} {bar1}")
+
+                # Row 3: Reset times
+                from datetime import datetime
+                reset0 = toFloat64(acc0.get("data_next_reset"))
+                reset1 = toFloat64(acc1.get("data_next_reset"))
+                reset_str0 = f"[dim]reset in {(datetime.fromtimestamp(reset0) - datetime.now()).days} days[/]" if reset0 > 0 else "[dim]--[/]"
+                reset_str1 = f"[dim]reset in {(datetime.fromtimestamp(reset1) - datetime.now()).days} days[/]" if reset1 > 0 else "[dim]--[/]"
+                lines.append(f"{reset_str0:<{name_col_width}} {reset_str1}")
+        else:
+            lines.append("[dim]Banwagon data (press r to refresh)[/]")
 
         self.query_one("#agents-info", Static).update("\n".join(lines))
 
@@ -291,5 +310,16 @@ class SystemMonitorApp(App):
         """Switch to Quota tab - no data update, use cached data."""
         pass
 
+    def _refresh_banwagon_cache(self):
+        """Refresh Banwagon cache on demand."""
+        import httpx
+        try:
+            resp = httpx.get(f"{self.api.base_url}/api/banwagon", timeout=5)
+            if resp.status_code == 200:
+                self.banwagon_cache = resp.json()
+        except Exception:
+            pass
+
     def action_refresh(self):
+        self._refresh_banwagon_cache()
         self.update_metrics()

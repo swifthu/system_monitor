@@ -26,7 +26,7 @@
     "runtime": null
   },
   "build": {
-    "buildCommand": "go build -o server . 2>&1",
+    "buildCommand": "go build -o server . 2>&1 && python3 -c \"from tui.app import SystemMonitorApp; print('OK')\"",
     "testCommand": null,
     "lintCommand": null,
     "devCommand": null,
@@ -140,14 +140,14 @@
   "hotPaths": [
     {
       "path": "tui/app.py",
-      "accessCount": 61,
-      "lastAccessed": 1778036415173,
+      "accessCount": 87,
+      "lastAccessed": 1779879313711,
       "type": "file"
     },
     {
       "path": "api/handlers.go",
-      "accessCount": 12,
-      "lastAccessed": 1778036500627,
+      "accessCount": 17,
+      "lastAccessed": 1779879269063,
       "type": "file"
     },
     {

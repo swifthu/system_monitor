@@ -1,9 +1,2 @@
-{"t":0,"agent":"system","event":"skill_invoked","skill_name":"superpowers:writing-plans"}
-{"t":0,"agent":"a02351c","agent_type":"general-purpose","event":"agent_start","parent_mode":"none"}
-{"t":0,"agent":"a02351c","agent_type":"general-purpose","event":"agent_stop","success":true,"duration_ms":388632}
-{"t":0,"agent":"ace3143","agent_type":"general-purpose","event":"agent_start","parent_mode":"none"}
-{"t":0,"agent":"ace3143","agent_type":"general-purpose","event":"agent_stop","success":true,"duration_ms":148331}
-{"t":0,"agent":"af91551","agent_type":"general-purpose","event":"agent_start","parent_mode":"none"}
-{"t":0,"agent":"af91551","agent_type":"general-purpose","event":"agent_stop","success":true,"duration_ms":141438}
-{"t":0,"agent":"ad6151c","agent_type":"unknown","event":"agent_stop","success":true}
-{"t":0,"agent":"a1e4337","agent_type":"unknown","event":"agent_stop","success":true}
+{"t":0,"agent":"aeae1cb","agent_type":"unknown","event":"agent_stop","success":true}
+{"t":0,"agent":"a32d07e","agent_type":"unknown","event":"agent_stop","success":true}

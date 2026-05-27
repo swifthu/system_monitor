@@ -512,19 +512,12 @@ func (h *Handler) StartBackgroundFetchers(ctx context.Context) {
 	quotaTicker := time.NewTicker(30 * time.Second)
 	defer quotaTicker.Stop()
 
-	// Banwagon - every 60 seconds
-	h.FetchBanwagon() // fetch immediately on start
-	banwagonTicker := time.NewTicker(60 * time.Second)
-	defer banwagonTicker.Stop()
-
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-quotaTicker.C:
 			h.FetchQuota()
-		case <-banwagonTicker.C:
-			h.FetchBanwagon()
 		}
 	}
 }
