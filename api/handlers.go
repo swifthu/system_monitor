@@ -509,7 +509,7 @@ func (h *Handler) FetchBanwagon() {
 func (h *Handler) StartBackgroundFetchers(ctx context.Context) {
 	// MiniMax quota - every 30 seconds
 	h.FetchQuota() // fetch immediately on start
-	quotaTicker := time.NewTicker(30 * time.Second)
+	quotaTicker := time.NewTicker(60 * time.Second)
 	defer quotaTicker.Stop()
 
 	for {

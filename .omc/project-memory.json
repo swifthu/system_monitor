@@ -26,7 +26,7 @@
     "runtime": null
   },
   "build": {
-    "buildCommand": "go build -o server . 2>&1 && python3 -c \"from tui.app import SystemMonitorApp; print('OK')\"",
+    "buildCommand": "cd /Users/jimmyhu/Documents/CC/Projects/monitor/system_monitor && go build -o server . 2>&1",
     "testCommand": null,
     "lintCommand": null,
     "devCommand": null,
